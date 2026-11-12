@@ -17,3 +17,11 @@
 **Current boundaries.** The exact audience, feature set, stack, AI approach, and infrastructure remain open. The first version does not need every file format, a full progress dashboard, spaced repetition, or complex orchestration. Avoid confidential workplace material in testing and public demonstrations.
 
 **Next steps.** Build the first end-to-end session, test it with several passages, record failures and decisions, then choose the next capability from the evidence. Publish a working demo and a concise technical case study when the application is reliable enough to share.
+
+## Run the first study session
+
+Requires Node.js 22 or later. Put your OpenAI API key after `OPENAI_API_KEY=` in `.env`, run `npm start`, then open `http://localhost:3000`. Paste 120–6,000 characters, choose a summary or explanation, and answer the three questions. `npm test` checks the API-backed flow with mocked model responses for science and software passages.
+
+The app requires `OPENAI_API_KEY` in the ignored `.env` file and uses the OpenAI API for summaries, questions, and feedback. Restart `npm start` after changing the key. `OPENAI_MODEL` can override the default `gpt-4o-mini`. Keep the key on the server; never paste sensitive material into this prototype.
+
+The server does not save passages or answers. It sends them to OpenAI for each session and answer. Generated source quotes are checked against the pasted passage before display. This checks that a quote exists, but does not prove the model's interpretation is correct.
