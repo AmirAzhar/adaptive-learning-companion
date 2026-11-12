@@ -1,5 +1,7 @@
 # Adaptive AI Learning Companion
 
+For the current implementation and a new-chat handoff, see [CONTEXT.md](CONTEXT.md).
+
 ## Project brief
 
 **Purpose.** Build and release a small, useful AI application while developing demonstrable Applied AI engineering skills. This is a personal software engineering and career development project first. A few real users and their feedback will help guide it; monetization and competing feature-for-feature with existing study tools are not goals.
