@@ -1,19 +1,35 @@
 const MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 
+// Standard USD prices per million tokens for gpt-4o-mini.
+const MINI_RATES = { input: 0.15, cachedInput: 0.075, output: 0.60 };
+
+export function estimateCost(model, usage) {
+  if (!/^gpt-4o-mini(?:$|-2024-07-18$)/.test(model) ||
+      !Number.isInteger(usage?.input_tokens) || !Number.isInteger(usage?.output_tokens) ||
+      usage.input_tokens < 0 || usage.output_tokens < 0) return null;
+  const cached = usage.input_tokens_details?.cached_tokens ?? 0;
+  if (!Number.isInteger(cached) || cached < 0 || cached > usage.input_tokens) return null;
+  return ((usage.input_tokens - cached) * MINI_RATES.input + cached * MINI_RATES.cachedInput +
+    usage.output_tokens * MINI_RATES.output) / 1_000_000;
+}
+
 async function structured(instructions, input, name, schema) {
   if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY is missing from .env.');
+  const requestBody = { model: MODEL, store: false, instructions, input,
+    text: { format: { type: 'json_schema', name, strict: true, schema } } };
   const response = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: MODEL, store: false, instructions, input,
-      text: { format: { type: 'json_schema', name, strict: true, schema } } }),
+    body: JSON.stringify(requestBody),
     signal: AbortSignal.timeout(30000),
   });
   if (!response.ok) throw new Error(`Model request failed (${response.status}). Check the API key and retry.`);
   const data = await response.json();
   const output = data.output?.flatMap((item) => item.content || []).find((item) => item.type === 'output_text')?.text;
   if (data.status !== 'completed' || !output) throw new Error('The model did not return a complete answer. Please retry.');
-  return JSON.parse(output);
+  const model = data.model || MODEL;
+  return { output: JSON.parse(output), requestBody, usage: data.usage ?? null,
+    estimatedCostUsd: estimateCost(model, data.usage) };
 }
 
 const questionSchema = { type: 'object', additionalProperties: false, required: ['text', 'sourceQuote'], properties: {

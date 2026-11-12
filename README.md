@@ -25,3 +25,7 @@ Requires Node.js 22 or later. Put your OpenAI API key after `OPENAI_API_KEY=` in
 The app requires `OPENAI_API_KEY` in the ignored `.env` file and uses the OpenAI API for summaries, questions, and feedback. Restart `npm start` after changing the key. `OPENAI_MODEL` can override the default `gpt-4o-mini`. Keep the key on the server; never paste sensitive material into this prototype.
 
 The server does not save passages or answers. It sends them to OpenAI for each session and answer. Generated source quotes are checked against the pasted passage before display. This checks that a quote exists, but does not prove the model's interpretation is correct.
+
+Open **View API request** beside the session result or feedback to inspect and copy the JSON body sent to OpenAI for that step. The API key is sent in an authorization header and is never included in this view.
+Each view also shows token usage reported by the API and an estimated USD cost at standard `gpt-4o-mini` rates. If a different model is configured, usage is shown without a cost estimate until its pricing is added.
+Usage and cost remain visible when a model response fails source-quote validation, because the API call still occurred.

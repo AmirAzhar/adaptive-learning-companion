@@ -23,14 +23,20 @@ async function body(request) {
   try { return JSON.parse(raw); } catch { throw new Error('Invalid request.'); }
 }
 
+function modelResult(response, generated, validate) {
+  const { output, requestBody, usage, estimatedCostUsd } = generated;
+  const details = { apiRequest: requestBody, usage, estimatedCostUsd };
+  try { json(response, 200, { ...validate(output), ...details }); }
+  catch (error) { json(response, 422, { error: error.message, ...details }); }
+}
+
 export const server = http.createServer(async (request, response) => {
   try {
     if (request.method === 'POST' && request.url === '/api/session') {
       const input = await body(request);
       const source = checkSource(input.source);
       if (!['summary', 'explanation'].includes(input.mode)) throw new Error('Choose summary or explanation.');
-      const result = checkSession(source, await generateSession(source, input.mode));
-      return json(response, 200, result);
+      return modelResult(response, await generateSession(source, input.mode), (output) => checkSession(source, output));
     }
     if (request.method === 'POST' && request.url === '/api/answer') {
       const input = await body(request);
@@ -38,8 +44,7 @@ export const server = http.createServer(async (request, response) => {
       if (typeof input.question !== 'string' || input.question.length > 500 || !input.question.trim()) throw new Error('Question is missing.');
       if (typeof input.answer !== 'string' || !input.answer.trim() || input.answer.length > 2000) throw new Error('Write an answer under 2,000 characters.');
       checkQuote(source, input.sourceQuote);
-      const result = checkFeedback(source, await gradeAnswer(source, input.question, input.answer));
-      return json(response, 200, result);
+      return modelResult(response, await gradeAnswer(source, input.question, input.answer), (output) => checkFeedback(source, output));
     }
     if (request.method === 'GET' && files[request.url]) {
       const [name, type] = files[request.url];
