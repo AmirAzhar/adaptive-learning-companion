@@ -12,8 +12,8 @@
     <header>
       <span class="eyebrow">Adaptive Learning Companion</span>
       <h1>Study spaces</h1>
-      <p>Keep your material and practice together. Create a space, add a text document, and return to your study sessions later.</p>
-      <p class="note">Documents and study history are saved on this computer. Material and answers are sent to OpenAI when you start a session or check an answer.</p>
+      <p class="intro">Turn your notes into a short quiz, then return to your work whenever you like.</p>
+      <p class="note">Documents and study history are saved on this computer. The selected document is sent to OpenAI when you generate a quiz. Quiz answers are checked locally.</p>
     </header>
     <section aria-labelledby="spaces-title">
       <h2 id="spaces-title">Your spaces</h2>
@@ -31,6 +31,7 @@
       <h2 id="space-name"></h2>
       <div class="panel">
         <h3>Documents</h3>
+        <p class="section-intro">Add a document to use as the source for a quiz.</p>
         <form id="document-form">
           <label for="document-file">Add a .txt or .md file (120–20,000 characters)</label>
           <input id="document-file" type="file" accept=".txt,.md,text/plain,text/markdown" required>
@@ -43,15 +44,16 @@
         </div>
       </div>
       <div class="panel">
-        <h3>Start a study session</h3>
+        <h3>Start a multiple-choice quiz</h3>
+        <p class="section-intro">Three questions, with an explanation after each answer.</p>
         <form id="run-form">
           <label for="run-document">Study document</label>
           <select id="run-document" required></select>
-          <button id="start" type="submit">Start session</button>
+          <button id="start" type="submit">Generate quiz</button>
         </form>
       </div>
       <h2>Study history</h2>
-      <p class="hint">Answer from memory first. Feedback shows an excerpt from your document. Your work is saved here.</p>
+      <p class="hint">Choose an answer to see an explanation and an excerpt from your document. Your work is saved here.</p>
       <div id="runs"></div>
     </section>
   </main>

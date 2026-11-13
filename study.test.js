@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { server } from './server.js';
-import { checkSession } from './study.js';
+import { checkSession, checkQuiz, sourceChunks } from './study.js';
 import { estimateCost } from './model.js';
 
 const passages = [
@@ -85,4 +85,18 @@ test('cost estimate uses cached-token rate and avoids guessing for other models'
 
 test('unsupported model citations are rejected', () => {
   assert.throws(() => checkSession(passages[0], { overview: 'Overview', questions: Array.from({ length: 3 }, () => ({ text: 'Why?', sourceQuote: 'This statement is not in the source passage.' })) }), /reference/);
+});
+
+test('quiz validation checks answer options and source block IDs', () => {
+  const question = { text: 'Which is true?', optionA: 'One', optionB: 'Two',
+    optionC: 'Three', optionD: 'Four', correctOption: 'A',
+    explanation: 'The source supports one.', sourceId: 1 };
+  const valid = { overview: 'Overview', question1: question, question2: question, question3: question };
+  assert.equal(checkQuiz(passages[0], valid).questions.length, 3);
+  assert.ok(passages[0].replace(/\s+/g, ' ').includes(checkQuiz(passages[0], valid).questions[0].sourceQuote));
+  assert.throws(() => checkQuiz(passages[0], { ...valid, question1: { ...question,
+    optionB: 'one' } }), /quiz question/);
+  assert.throws(() => checkQuiz(passages[0], { ...valid, question1: { ...question,
+    sourceId: 99 } }), /quiz question/);
+  assert.equal(sourceChunks('a'.repeat(430)).join(''), 'a'.repeat(430));
 });

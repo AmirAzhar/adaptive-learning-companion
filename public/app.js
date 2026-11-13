@@ -108,17 +108,97 @@ function renderRuns() {
   if (!currentSpace.runs.length) { list.textContent = 'No study sessions yet.'; return; }
   const spaceId = currentSpace.id;
   for (const run of [...currentSpace.runs].reverse()) {
+    const roundNumber = run.currentRound ?? 1;
+    const roundIds = run.practiceQuestionIds ?? run.questions.map((question) => question.id);
+    const roundAttempts = run.attempts.filter((attempt) => (attempt.round ?? 1) === roundNumber);
     const article = document.createElement('article');
     article.className = 'panel run';
+    const runHeader = document.createElement('div');
+    runHeader.className = 'run-header';
     const heading = document.createElement('h3');
     const source = currentSpace.documents.find((item) => item.id === run.documentId);
     heading.textContent = `${source?.name || 'Document'} · ${new Date(run.createdAt).toLocaleString()}`;
+    const badge = document.createElement('span');
+    badge.className = 'run-badge';
+    badge.textContent = run.type === 'quiz' ? `Quiz · round ${roundNumber}` : 'Open-ended · 3 questions';
+    runHeader.append(heading, badge);
     const label = document.createElement('strong');
+    label.className = 'overview-label';
     label.textContent = 'Main ideas';
     const overview = document.createElement('p');
+    overview.className = 'run-overview';
     overview.textContent = run.overview;
-    article.append(heading, label, overview, requestDetails(run));
+    article.append(runHeader, label, overview, requestDetails(run));
+    if (run.type === 'quiz') {
+      const progress = document.createElement('p');
+      progress.className = 'quiz-progress';
+      progress.textContent = `${roundIds.filter((id) => roundAttempts.some((attempt) => attempt.questionId === id)).length} of ${roundIds.length} questions answered in this round`;
+      article.append(progress);
+    }
     for (const question of run.questions) {
+      if (run.type === 'quiz') {
+        if (!roundIds.includes(question.id)) continue;
+        const attempt = [...roundAttempts].reverse().find((item) => item.questionId === question.id);
+        const card = document.createElement('form');
+        card.className = 'question';
+        const title = document.createElement('h4');
+        title.textContent = `${question.id}. ${question.text}`;
+        const options = document.createElement('fieldset');
+        const legend = document.createElement('legend');
+        legend.textContent = 'Choose one answer';
+        options.append(legend);
+        question.options.forEach((option, index) => {
+          const label = document.createElement('label');
+          label.className = 'quiz-option';
+          const radio = document.createElement('input');
+          radio.type = 'radio';
+          radio.name = `answer-${run.id}-${question.id}`;
+          radio.value = String(index);
+          radio.required = !attempt;
+          radio.disabled = Boolean(attempt);
+          radio.checked = attempt?.optionIndex === index;
+          label.append(radio, ` ${option}`);
+          options.append(label);
+        });
+        card.append(title, options);
+        if (attempt) {
+          const result = document.createElement('div');
+          result.className = `feedback ${attempt.correct ? 'is-correct' : 'is-incorrect'}`;
+          const verdict = document.createElement('strong');
+          verdict.textContent = attempt.correct ? 'Correct' : 'Incorrect';
+          const selected = document.createElement('p');
+          selected.textContent = `You chose: ${question.options[attempt.optionIndex]}`;
+          const correct = document.createElement('p');
+          correct.textContent = `Correct answer: ${question.options[question.correctIndex]}`;
+          const explanation = document.createElement('p');
+          explanation.textContent = question.explanation;
+          const quote = document.createElement('blockquote');
+          quote.textContent = question.sourceQuote;
+          result.append(verdict, selected, correct, explanation, quote);
+          card.append(result);
+        } else {
+          const button = document.createElement('button');
+          button.textContent = 'Check answer';
+          const feedbackStatus = document.createElement('div');
+          feedbackStatus.setAttribute('aria-live', 'polite');
+          card.append(button, feedbackStatus);
+          card.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            button.disabled = true;
+            feedbackStatus.textContent = 'Checking answer…';
+            try {
+              const selected = card.querySelector('input[type="radio"]:checked');
+              await api(`/api/spaces/${spaceId}/runs/${run.id}/answers`,
+                { questionId: question.id, optionIndex: Number(selected.value) });
+              await openSpace(spaceId);
+              status.textContent = 'Quiz answer saved.';
+            } catch (error) { message(error, feedbackStatus); }
+            finally { button.disabled = false; }
+          });
+        }
+        article.append(card);
+        continue;
+      }
       const card = document.createElement('form');
       card.className = 'question';
       const title = document.createElement('h4');
@@ -162,6 +242,44 @@ function renderRuns() {
         finally { button.disabled = false; }
       });
       article.append(card);
+    }
+    if (run.type === 'quiz' && roundIds.every((id) => roundAttempts.some((attempt) => attempt.questionId === id))) {
+      const missed = roundIds.filter((id) => ![...roundAttempts].reverse().find((attempt) => attempt.questionId === id).correct);
+      const result = document.createElement('div');
+      result.className = 'round-result';
+      const summary = document.createElement('strong');
+      summary.textContent = missed.length
+        ? `${roundIds.length - missed.length} of ${roundIds.length} correct · ${missed.length} to practice`
+        : 'All questions correct in this round';
+      result.append(summary);
+      if (missed.length) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = 'Practice missed questions';
+        button.addEventListener('click', async () => {
+          button.disabled = true;
+          try {
+            await api(`/api/spaces/${spaceId}/runs/${run.id}/practice`, {});
+            await openSpace(spaceId);
+            status.textContent = 'Practice round ready.';
+          } catch (error) { message(error); button.disabled = false; }
+        });
+        result.append(button);
+      }
+      article.append(result);
+    }
+    if (run.type === 'quiz' && roundNumber > 1) {
+      const history = document.createElement('details');
+      history.className = 'quiz-history';
+      const summary = document.createElement('summary');
+      summary.textContent = 'Previous rounds';
+      history.append(summary);
+      for (const attempt of run.attempts.filter((item) => (item.round ?? 1) < roundNumber)) {
+        const line = document.createElement('p');
+        line.textContent = `Round ${attempt.round ?? 1} · Question ${attempt.questionId}: ${attempt.correct ? 'Correct' : 'Incorrect'}`;
+        history.append(line);
+      }
+      article.append(history);
     }
     list.append(article);
   }

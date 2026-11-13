@@ -12,6 +12,23 @@ export function checkQuote(source, quote) {
   return quote;
 }
 
+export function sourceChunks(source) {
+  let remaining = source.replace(/\s+/g, ' ').trim();
+  const chunks = [];
+  let lastSplitWithinWord = false;
+  while (remaining.length > 420) {
+    const sentenceEnd = Math.max(remaining.lastIndexOf('. ', 420), remaining.lastIndexOf('? ', 420), remaining.lastIndexOf('! ', 420));
+    const spaceEnd = remaining.lastIndexOf(' ', 420);
+    const cut = sentenceEnd >= 200 ? sentenceEnd + 1 : spaceEnd >= 200 ? spaceEnd : 420;
+    chunks.push(remaining.slice(0, cut));
+    lastSplitWithinWord = remaining[cut] !== ' ';
+    remaining = remaining.slice(cut).trimStart();
+  }
+  if (remaining.length < 12 && chunks.length) chunks[chunks.length - 1] += `${lastSplitWithinWord ? '' : ' '}${remaining}`;
+  else if (remaining) chunks.push(remaining);
+  return chunks;
+}
+
 export function checkSession(source, result) {
   if (typeof result?.overview !== 'string' || !result.overview.trim() || !Array.isArray(result.questions) || result.questions.length !== 3) {
     throw new Error('The study session response was incomplete. Please retry.');
@@ -23,6 +40,31 @@ export function checkSession(source, result) {
       text: typeof q.text === 'string' && q.text.trim() ? q.text : (() => { throw new Error('A question was missing.'); })(),
       sourceQuote: checkQuote(source, q.sourceQuote),
     })),
+  };
+}
+
+export function checkQuiz(source, result) {
+  if (typeof result?.overview !== 'string' || !result.overview.trim()) {
+    throw new Error('The quiz response was incomplete. Please retry.');
+  }
+  const chunks = sourceChunks(source);
+  return {
+    overview: result.overview.trim(),
+    questions: ['question1', 'question2', 'question3'].map((key, index) => {
+      const question = result[key];
+      const options = ['optionA', 'optionB', 'optionC', 'optionD'].map((name) => question?.[name]);
+      if (typeof question?.text !== 'string' || !question.text.trim() ||
+          options.some((option) => typeof option !== 'string' || !option.trim()) ||
+          new Set(options.map((option) => option.trim().toLowerCase())).size !== 4 ||
+          !['A', 'B', 'C', 'D'].includes(question.correctOption) ||
+          typeof question.explanation !== 'string' || !question.explanation.trim() ||
+          !Number.isInteger(question.sourceId) || question.sourceId < 1 || question.sourceId > chunks.length) {
+        throw new Error('A quiz question was incomplete or ambiguous. Please retry.');
+      }
+      return { id: index + 1, text: question.text.trim(), options: options.map((option) => option.trim()),
+        correctIndex: 'ABCD'.indexOf(question.correctOption), explanation: question.explanation.trim(),
+        sourceQuote: checkQuote(source, chunks[question.sourceId - 1]) };
+    }),
   };
 }
 
