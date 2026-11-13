@@ -1,6 +1,6 @@
 export function checkSource(source) {
-  if (typeof source !== 'string' || source.trim().length < 120 || source.length > 6000) {
-    throw new Error('Paste a passage between 120 and 6,000 characters.');
+  if (typeof source !== 'string' || source.trim().length < 120 || source.length > 20000) {
+    throw new Error('Use study material between 120 and 20,000 characters.');
   }
   return source.trim();
 }

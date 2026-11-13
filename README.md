@@ -20,13 +20,13 @@ For the current implementation and a new-chat handoff, see [CONTEXT.md](CONTEXT.
 
 **Next steps.** Build the first end-to-end session, test it with several passages, record failures and decisions, then choose the next capability from the evidence. Publish a working demo and a concise technical case study when the application is reliable enough to share.
 
-## Run the first study session
+## Run a saved study space
 
-Requires Node.js 22 or later. Put your OpenAI API key after `OPENAI_API_KEY=` in `.env`, run `npm start`, then open `http://localhost:3000`. Paste 120–6,000 characters, choose a summary or explanation, and answer the three questions. `npm test` checks the API-backed flow with mocked model responses for science and software passages.
+Requires Node.js 22 or later. Put your OpenAI API key after `OPENAI_API_KEY=` in `.env`, run `npm start`, then open `http://localhost:3000`. Create a study space and add a `.txt` or `.md` document containing 120–20,000 characters. Preview the text, start a session, read a short plain-language overview of the main ideas, and answer the three questions. Study spaces, documents, questions, answers, and feedback are saved in the ignored local `data/spaces.json` file, so you can return after restarting the app. `npm test` covers the API-backed study flow and persistence with mocked model responses.
 
 The app requires `OPENAI_API_KEY` in the ignored `.env` file and uses the OpenAI API for summaries, questions, and feedback. Restart `npm start` after changing the key. `OPENAI_MODEL` can override the default `gpt-4o-mini`. Keep the key on the server; never paste sensitive material into this prototype.
 
-The server does not save passages or answers. It sends them to OpenAI for each session and answer. Generated source quotes are checked against the pasted passage before display. This checks that a quote exists, but does not prove the model's interpretation is correct.
+The server saves uploaded document text and study history locally. It sends the selected document text to OpenAI for each study session and answer. Generated source quotes are checked against that text before display. This checks that a quote exists, but does not prove the model's interpretation is correct. This local prototype has no accounts or deletion UI; remove `data/spaces.json` to erase local study data.
 
 Open **View API request** beside the session result or feedback to inspect and copy the JSON body sent to OpenAI for that step. The API key is sent in an authorization header and is never included in this view.
 Each view also shows token usage reported by the API and an estimated USD cost at standard `gpt-4o-mini` rates. If a different model is configured, usage is shown without a cost estimate until its pricing is added.

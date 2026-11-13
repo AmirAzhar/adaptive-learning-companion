@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Study session</title>
+  <title>Study spaces</title>
   <link rel="stylesheet" href="/style.css">
   <script src="/app.js" defer></script>
 </head>
@@ -11,32 +11,48 @@
   <main>
     <header>
       <span class="eyebrow">Adaptive Learning Companion</span>
-      <h1>Study a passage</h1>
-      <p>Paste a short text, review the main ideas, then answer three questions in your own words.</p>
-      <p class="note">Your passage and answers are sent to OpenAI to prepare this session.</p>
+      <h1>Study spaces</h1>
+      <p>Keep your material and practice together. Create a space, add a text document, and return to your study sessions later.</p>
+      <p class="note">Documents and study history are saved on this computer. Material and answers are sent to OpenAI when you start a session or check an answer.</p>
     </header>
-
-    <form id="session-form">
-      <label for="source">Your study material</label>
-      <textarea id="source" rows="9" minlength="120" maxlength="6000" required placeholder="Paste a passage of 120–6,000 characters..."></textarea>
-      <div class="form-row">
-        <label for="mode">Start with</label>
-        <select id="mode"><option value="summary">Concise summary</option><option value="explanation">Plain explanation</option></select>
-        <button id="start" type="submit">Start session</button>
-      </div>
-    </form>
+    <section aria-labelledby="spaces-title">
+      <h2 id="spaces-title">Your spaces</h2>
+      <form id="space-form" class="compact-form">
+        <label for="space-title">New study space</label>
+        <div class="inline-form">
+          <input id="space-title" maxlength="80" required placeholder="e.g. Database Systems">
+          <button type="submit">Create space</button>
+        </div>
+      </form>
+      <div id="spaces"></div>
+    </section>
     <p id="status" role="status" aria-live="polite"></p>
-    <div id="session-request"></div>
-
-    <section id="session" hidden>
+    <section id="space" hidden aria-labelledby="space-name">
+      <h2 id="space-name"></h2>
       <div class="panel">
-        <span class="eyebrow" id="overview-label">Summary</span>
-        <h2>Main ideas</h2>
-        <p id="overview"></p>
+        <h3>Documents</h3>
+        <form id="document-form">
+          <label for="document-file">Add a .txt or .md file (120–20,000 characters)</label>
+          <input id="document-file" type="file" accept=".txt,.md,text/plain,text/markdown" required>
+          <button type="submit">Add document</button>
+        </form>
+        <div id="documents"></div>
+        <div id="document-preview" hidden>
+          <h3 id="preview-title"></h3>
+          <pre id="preview-text"></pre>
+        </div>
       </div>
-      <h2>Questions</h2>
-      <p class="hint">Answer from memory first. Feedback will show a relevant excerpt from your source.</p>
-      <div id="questions"></div>
+      <div class="panel">
+        <h3>Start a study session</h3>
+        <form id="run-form">
+          <label for="run-document">Study document</label>
+          <select id="run-document" required></select>
+          <button id="start" type="submit">Start session</button>
+        </form>
+      </div>
+      <h2>Study history</h2>
+      <p class="hint">Answer from memory first. Feedback shows an excerpt from your document. Your work is saved here.</p>
+      <div id="runs"></div>
     </section>
   </main>
 </body>

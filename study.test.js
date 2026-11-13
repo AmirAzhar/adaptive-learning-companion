@@ -36,13 +36,14 @@ test('a learner can start and answer an API-backed study session for varied pass
   try {
     const base = `http://localhost:${server.address().port}`;
     for (const source of passages) {
-      const start = await fetch(`${base}/api/session`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ source, mode: 'summary' }) });
+      const start = await fetch(`${base}/api/session`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ source }) });
       assert.equal(start.status, 200);
       const session = await start.json();
       assert.deepEqual(session.apiRequest, sentRequests.at(-1));
       assert.equal(session.usage.total_tokens, 300);
       assert.equal(session.estimatedCostUsd, 0.00009);
       assert.ok(session.apiRequest.instructions.includes('active-recall'));
+      assert.ok(session.apiRequest.instructions.includes('main ideas'));
       assert.ok(!JSON.stringify(session.apiRequest).includes('test-key'));
       assert.equal(session.questions.length, 3);
       assert.ok(session.overview.length > 30);

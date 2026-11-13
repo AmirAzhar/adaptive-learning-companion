@@ -1,49 +1,41 @@
 # Development handoff
 
-Updated 2026-11-12. This file records the current state for a new chat. `README.md` holds the product brief and run instructions; the code is the source of truth when either document is stale.
+Updated 2026-11-13. `README.md` holds the product brief and run instructions. The code is the source of truth if these notes become stale.
 
 ## What exists
 
-- A local browser app at `http://localhost:3000` built with Node.js 22 and plain HTML, CSS, and JavaScript. There are no runtime package dependencies.
-- A learner pastes 120–6,000 characters, selects a concise summary or plain explanation, and starts a session. One OpenAI Responses API call returns the overview and three questions.
-- Each **Check answer** action makes one separate OpenAI call. It returns a support level, feedback, and a source quote. A full three-answer session makes four model calls.
-- The server checks that every generated quote appears in the pasted passage. Invalid quotes produce a retry message. The API request panel still shows usage and cost for a completed model call whose quote failed validation.
-- **View API request** shows and copies the JSON body sent for that step. The API key is only in the server-side authorization header.
-- The request panel shows API-reported input, cached input, output, and total tokens. It estimates USD cost using standard `gpt-4o-mini` rates. Other models show usage without a cost estimate.
+- A local Node.js 22 browser app at `http://localhost:3000`, with plain HTML, CSS, and JavaScript and no runtime package dependencies.
+- A learner creates a named **study space**, adds one or more `.txt` or `.md` documents, previews their text, and chooses one document for a **study session**. Each document must contain 120–20,000 characters. Documents are currently studied one at a time.
+- Starting a session makes one OpenAI Responses API call for a two-to-four-sentence plain-language overview of the main ideas and three questions. Each answer makes one separate call for feedback and a source quote. There is no overview-style choice.
+- Study spaces, document text, sessions, answers, feedback, request bodies, and usage are saved locally in ignored `data/spaces.json`. The app reopens the last space from the URL hash, or the first space. Saved data survives server restarts.
+- Every generated quote must appear in the document text. An invalid quote produces a retry message while still showing API usage and estimated cost for that call. The API key remains server-side.
+- **View API request** shows the JSON body and per-call token usage. Standard `gpt-4o-mini` cost is estimated; other models show usage without a price estimate.
 
-## Work completed
-
-1. Started from the README project brief and built the first browser flow with a small Node server.
-2. Added `.env` loading, then removed the temporary local text-matching demo so summaries, questions, and feedback use the OpenAI API.
-3. Added copyable request bodies for both session generation and answer feedback.
-4. Added per-call token usage and estimated cost, including when a model result fails quote validation.
-
-## Key files and boundaries
+## Key files
 
 | File | Responsibility |
 | --- | --- |
-| `server.js` | Local HTTP server, input checks, routes, and response handling |
-| `model.js` | OpenAI request bodies, structured output schemas, usage, and cost calculation |
-| `study.js` | Source, session, feedback, and quote validation |
-| `public/` | Browser interface and copyable request panels |
-| `study.test.js` | API-route tests with mocked model responses and cost checks |
+| `server.js` | Local HTTP server and study-space, document, run, and answer routes |
+| `store.js` | Serialized, atomic writes to the local JSON store |
+| `model.js` | OpenAI requests, structured output schemas, usage, and cost |
+| `study.js` | Source and generated-result validation |
+| `public/` | Browser interface |
+| `study.test.js` | Original API flow and validation tests |
+| `spaces.test.js` | Saved-space API flow, validation, and server-restart persistence test |
 
-`npm start` loads the ignored `.env` file. `OPENAI_API_KEY` is required; `OPENAI_MODEL` can override the default `gpt-4o-mini`. The server does not persist passages or answers, and it sends them to OpenAI for processing. Never commit `.env` or test with confidential workplace material.
+## Decisions and boundaries
 
-## Decisions so far
-
-1. Keep the first slice small: pasted text and a complete study flow, without accounts, file uploads, progress tracking, or orchestration.
-2. Use the model for free-text feedback. A generated answer key plus local word matching would be unreliable for paraphrases and misconceptions. Batched grading could reduce call count later, but would delay feedback until all answers are submitted.
-3. Use Structured Outputs for predictable response shapes and validate quoted evidence against the source in application code.
-4. Show the actual request body and per-call usage for developer transparency. Cost is an estimate based on published rates, not a bill from OpenAI.
+1. A **study space** is the lasting container. A **study session** is one generated round of three questions using one document in that space. A learner can start more sessions in the same space.
+2. Browser file selection reads `.txt` and `.md` as text and posts the text to the local server. The server validates the extension and length and saves an immutable copy. The initial 6,000-character cap rejected a real 7,013-character React lifecycle note, so the bounded limit is now 20,000 characters. There is no PDF extraction, cross-document retrieval, account system, or hosted deployment yet.
+3. The store is a single local JSON file with writes serialized within the process and replaced atomically. This is suitable for the local single-server prototype, not multi-instance deployment. `STUDY_DATA_DIR` can override the storage directory for tests.
+4. Saved runs refer to immutable document IDs, so adding a document later does not change past questions or feedback. Reattempts are allowed and saved on the same question.
+5. OpenAI requests set `store: false`. The app still saves source text and the request body locally; users should not test with confidential workplace material. There is no per-space delete UI yet. Deleting `data/spaces.json` erases all local study data.
+6. The prior `/api/session` and `/api/answer` routes remain for compatibility and their existing tests, but the browser uses `/api/spaces` routes.
+7. Removed the "Start with" dropdown because summary and explanation had no meaningful difference beyond a model style label. New runs show one "Main ideas" overview. Previously saved runs remain readable.
 
 ## Verification and known gaps
 
-- `npm test` checks science and database passages with mocked OpenAI responses, source-quote rejection, and cost calculation. Live browser checks generated questions and feedback for both subjects and confirmed the request and cost panels.
-- A model can still return a quote that is not an exact passage excerpt. The app rejects it and asks the learner to retry, but the paid call has already occurred. Improving citation reliability is a concrete next quality issue.
-- A verified quote proves that text exists in the passage, not that the model's interpretation or grading is correct. Question quality and feedback quality need a small repeatable evaluation set before broader claims.
-- There is no deployment or persistent session history yet. The app runs locally and `.env` stays untracked.
-
-## Starting a new chat
-
-Open the repository in Codex and describe the next task. `AGENTS.md` directs the new chat to this file and the README. If needed, say: “Read `CONTEXT.md` and continue from the current study-session implementation.”
+- `npm test` passes with mocked OpenAI responses, including create/upload/study/answer/restart/reopen, a 7,100-character document, and invalid-document cases. A browser upload of an 8,281-character synthetic Markdown file succeeded after the limit fix; the earlier short-document flow was also checked live through feedback and reload.
+- Quote matching proves only that the text appears in the source, not that the question or grading is justified. Build a small repeatable quality evaluation set.
+- PDF support needs text extraction and a source-preview step. Larger documents and multiple active documents need section selection or retrieval before model calls.
+- The local server binds to `127.0.0.1` and has no authentication. Add auth, storage isolation, deletion, and operational controls before any public deployment.
