@@ -68,6 +68,23 @@ export function checkQuiz(source, result) {
   };
 }
 
+export function checkFlashcards(source, result) {
+  const chunks = sourceChunks(source);
+  const cards = ['card1', 'card2', 'card3', 'card4', 'card5'].map((key, index) => {
+    const card = result?.[key];
+    if (typeof card?.front !== 'string' || !card.front.trim() || card.front.length > 500 ||
+        typeof card.back !== 'string' || !card.back.trim() || card.back.length > 2000 ||
+        !Number.isInteger(card.sourceId) || card.sourceId < 1 || card.sourceId > chunks.length) {
+      throw new Error('A flashcard was incomplete. Please retry.');
+    }
+    return { id: index + 1, front: card.front.trim(), back: card.back.trim(),
+      sourceQuote: checkQuote(source, chunks[card.sourceId - 1]) };
+  });
+  if (new Set(cards.map((card) => card.front.toLowerCase())).size !== cards.length)
+    throw new Error('The flashcards contained duplicate questions. Please retry.');
+  return { cards };
+}
+
 export function checkFeedback(source, result) {
   if (!['supported', 'partly supported', 'needs work'].includes(result?.level) || typeof result.feedback !== 'string' || !result.feedback.trim()) {
     throw new Error('The feedback response was incomplete. Please retry.');

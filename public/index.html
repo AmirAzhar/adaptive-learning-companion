@@ -8,54 +8,127 @@
   <script src="/app.js" defer></script>
 </head>
 <body>
+  <header class="site-header">
+    <div class="site-header-inner">
+      <span class="brand-mark" aria-hidden="true">✦</span>
+      <div>
+        <p class="eyebrow">Adaptive Learning Companion</p>
+        <p class="site-title">Study spaces</p>
+      </div>
+      <p class="site-tagline">Turn notes into practice worth returning to.</p>
+      <button id="library-toggle" type="button" aria-controls="library-sidebar" aria-expanded="false"><svg viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="M3 5h14M3 10h14M3 15h14"/></svg>Library</button>
+    </div>
+  </header>
+
   <main>
-    <header>
-      <span class="eyebrow">Adaptive Learning Companion</span>
-      <h1>Study spaces</h1>
-      <p class="intro">Turn your notes into a short quiz, then return to your work whenever you like.</p>
-      <p class="note">Documents and study history are saved on this computer. The selected document is sent to OpenAI when you generate a quiz. Quiz answers are checked locally.</p>
-    </header>
-    <section aria-labelledby="spaces-title">
-      <h2 id="spaces-title">Your spaces</h2>
-      <form id="space-form" class="compact-form">
-        <label for="space-title">New study space</label>
-        <div class="inline-form">
-          <input id="space-title" maxlength="80" required placeholder="e.g. Database Systems">
-          <button type="submit">Create space</button>
+    <dialog id="library-sidebar" class="library-drawer" aria-labelledby="library-title">
+      <div class="drawer-header">
+        <div>
+          <p class="eyebrow">Study library</p>
+          <h2 id="library-title">Spaces &amp; documents</h2>
         </div>
-      </form>
-      <div id="spaces"></div>
-    </section>
-    <p id="status" role="status" aria-live="polite"></p>
-    <section id="space" hidden aria-labelledby="space-name">
-      <h2 id="space-name"></h2>
-      <div class="panel">
-        <h3>Documents</h3>
-        <p class="section-intro">Add a document to use as the source for a quiz.</p>
-        <form id="document-form">
-          <label for="document-file">Add a .txt or .md file (120–20,000 characters)</label>
-          <input id="document-file" type="file" accept=".txt,.md,text/plain,text/markdown" required>
-          <button type="submit">Add document</button>
-        </form>
-        <div id="documents"></div>
-        <div id="document-preview" hidden>
-          <h3 id="preview-title"></h3>
-          <pre id="preview-text"></pre>
-        </div>
+        <button id="library-close" type="button" aria-label="Close library" autofocus><svg viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="M4 4l12 12M16 4L4 16"/></svg></button>
       </div>
-      <div class="panel">
-        <h3>Start a multiple-choice quiz</h3>
-        <p class="section-intro">Three questions, with an explanation after each answer.</p>
-        <form id="run-form">
-          <label for="run-document">Study document</label>
-          <select id="run-document" required></select>
-          <button id="start" type="submit">Generate quiz</button>
-        </form>
+        <section class="sidebar-section" aria-labelledby="spaces-title">
+          <div class="sidebar-heading">
+            <h2 id="spaces-title">Spaces</h2>
+            <details class="add-space">
+              <summary aria-label="New space"><svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M8 2v12M2 8h12"/></svg></summary>
+              <form id="space-form">
+                <label for="space-title">Space name</label>
+                <input id="space-title" maxlength="80" required placeholder="e.g. Database Systems">
+                <button type="submit">Create space</button>
+              </form>
+            </details>
+          </div>
+          <div id="spaces"></div>
+        </section>
+
+        <section id="sidebar-documents" class="sidebar-section" hidden aria-labelledby="documents-title">
+          <div class="sidebar-heading">
+            <h2 id="documents-title">Documents</h2>
+            <details class="add-document">
+              <summary aria-label="Add document"><svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M8 2v12M2 8h12"/></svg></summary>
+              <form id="document-form">
+                <label for="document-file">Add a .txt or .md file (120–20,000 characters)</label>
+                <input id="document-file" type="file" accept=".txt,.md,text/plain,text/markdown" required>
+                <button type="submit">Save document</button>
+              </form>
+            </details>
+          </div>
+          <nav id="documents" aria-label="Documents in this space"></nav>
+        </section>
+        <p class="sidebar-note">Your documents and study history stay on this computer.</p>
+    </dialog>
+
+      <div class="main-column">
+        <div id="status" role="status" aria-live="polite"></div>
+        <section id="space" hidden aria-labelledby="active-document-name">
+          <div class="workspace-header panel">
+            <p id="space-name" class="workspace-breadcrumb"></p>
+            <div class="workspace-title-row">
+              <div>
+                <span class="eyebrow">Current document</span>
+                <h1 id="active-document-name">Choose a document</h1>
+                <p id="document-meta" class="document-summary"></p>
+              </div>
+              <div class="workspace-accent" aria-hidden="true">✦</div>
+            </div>
+            <details id="document-preview" hidden>
+              <summary>Read source text</summary>
+              <pre id="preview-text"></pre>
+            </details>
+            <form id="run-form" class="generation-area">
+              <p class="generation-note">Generate study material from this document. Each format makes a separate OpenAI request.</p>
+              <div class="generation-actions">
+                <button id="start" type="submit">Generate quiz and flashcards</button>
+                <button id="quiz-only" type="button" class="secondary">Generate quiz</button>
+                <button id="cards-only" type="button" class="secondary">Generate flashcards</button>
+              </div>
+            </form>
+          </div>
+
+          <div class="mode-header">
+            <div>
+              <span class="eyebrow">Practice</span>
+              <h2>Study this document</h2>
+            </div>
+            <div class="mode-switch" aria-label="Study mode">
+              <button id="mode-quiz" type="button" aria-pressed="true">Quiz</button>
+              <button id="mode-cards" type="button" aria-pressed="false">Flashcards</button>
+            </div>
+          </div>
+
+          <section id="quiz-pane" class="study-pane" aria-label="Quiz practice">
+            <div class="study-pane-heading">
+              <div>
+                <h3>Quiz</h3>
+                <p>Choose an answer, then check the explanation and source.</p>
+              </div>
+              <div id="quiz-picker-wrap" class="history-picker" hidden>
+                <label for="quiz-picker">Saved quiz</label>
+                <select id="quiz-picker"></select>
+              </div>
+            </div>
+            <div id="runs"></div>
+          </section>
+
+          <section id="cards-pane" class="study-pane" aria-label="Flashcard practice" hidden>
+            <div class="study-pane-heading">
+              <div>
+                <h3>Flashcards</h3>
+                <p>Think of your answer before you reveal it, then choose Again or Good.</p>
+              </div>
+              <div id="deck-picker-wrap" class="history-picker" hidden>
+                <label for="deck-picker">Saved deck</label>
+                <select id="deck-picker"></select>
+              </div>
+            </div>
+            <div id="decks"></div>
+          </section>
+        </section>
+        <footer>Generated material should be checked against its source.</footer>
       </div>
-      <h2>Study history</h2>
-      <p class="hint">Choose an answer to see an explanation and an excerpt from your document. Your work is saved here.</p>
-      <div id="runs"></div>
-    </section>
   </main>
 </body>
 </html>
