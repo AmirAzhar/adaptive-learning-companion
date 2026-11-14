@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { server } from './server.js';
+import { server } from '../server/index.js';
 
 const source = 'A database index stores selected column values in a searchable structure. It helps the database find matching rows without scanning the entire table. Inserts and updates take more work because the database also maintains the index. A query planner decides when using the index is cheaper than scanning the table.';
 

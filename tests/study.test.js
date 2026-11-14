@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { server } from './server.js';
-import { checkSession, checkQuiz, sourceChunks } from './study.js';
-import { estimateCost } from './model.js';
+import { server } from '../server/index.js';
+import { checkSession, checkQuiz, sourceChunks } from '../server/study.js';
+import { estimateCost } from '../server/model.js';
 
 const passages = [
   'Evaporation changes liquid water into water vapor when molecules gain enough energy to leave the surface. Warm air can hold more water vapor than cold air. Condensation occurs when water vapor cools and becomes liquid droplets, often forming clouds. Precipitation returns water from clouds to Earth as rain or snow.',

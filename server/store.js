@@ -3,7 +3,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
-const defaultDir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'data');
+const defaultDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'data');
 let pending = Promise.resolve();
 
 function filename() {

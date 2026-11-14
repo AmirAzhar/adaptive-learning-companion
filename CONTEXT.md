@@ -1,6 +1,6 @@
 # Development handoff
 
-Updated 2026-11-13. `README.md` holds the product brief and run instructions. The code is the source of truth if these notes become stale.
+Updated 2026-11-14. `README.md` holds the product brief and run instructions. The code is the source of truth if these notes become stale.
 
 ## What exists
 
@@ -17,13 +17,19 @@ Updated 2026-11-13. `README.md` holds the product brief and run instructions. Th
 
 | File | Responsibility |
 | --- | --- |
-| `server.js` | Local HTTP server and study-space, document, run, deck, and review routes |
-| `store.js` | Serialized, atomic writes to the local JSON store |
-| `model.js` | OpenAI requests, structured output schemas, usage, and cost |
-| `study.js` | Source and generated-result validation |
+| `server/index.js` | HTTP entrypoint, route dispatch, static assets, and top-level errors |
+| `server/routes/spaces.js` | Study-space and document routes |
+| `server/routes/quizzes.js` | Quiz generation, answers, and missed-question practice routes |
+| `server/routes/flashcards.js` | Deck generation, card editing, and review routes |
+| `server/routes/legacy.js` | Compatibility routes for the original open-ended API |
+| `server/http.js` | Shared request parsing and JSON/model-result responses |
+| `server/store.js` | Serialized, atomic writes to the local JSON store |
+| `server/model.js` | OpenAI requests, structured output schemas, usage, and cost |
+| `server/study.js` | Source and generated-result validation |
 | `public/` | Browser interface |
-| `study.test.js` | Original API flow and validation tests |
-| `spaces.test.js` | Saved-space API flow, validation, and server-restart persistence test |
+| `tests/study.test.js` | Original API flow and validation tests |
+| `tests/spaces.test.js` | Saved-space API flow, validation, and server-restart persistence test |
+| `tests/flashcards.test.js` | Flashcard generation, editing, review, and persistence tests |
 
 ## Decisions and boundaries
 
@@ -37,11 +43,12 @@ Updated 2026-11-13. `README.md` holds the product brief and run instructions. Th
 8. Replaced the browser's open-ended question flow with multiple-choice quizzes. A generation call supplies four distinct options, one answer key, a short explanation, and a source-block ID per question. The server validates the structure and block ID, derives the displayed excerpt from the document, then grades selected option indexes locally. Fixed question and option fields in the structured response prevent a variable number of questions or choices. This removes per-answer model calls for new runs. A valid block reference does not prove the generated key or explanation is correct; review examples with real material before treating scores as reliable.
 9. Flashcard decks are independent of quiz runs but use the same selected immutable document. Initial generation calls both routes, and each request validates and saves separately. A deck has five editable cards and saved review rounds. The server accepts one Again/Good rating per card in a round; a completed round can start again with only Again cards or with all cards. Edits preserve card IDs and review history. Answer reveal is browser state; the server cannot verify that a learner revealed before rating. Source-block validation proves the displayed excerpt belongs to the document, not that the answer is correct. Spaced scheduling, Anki export, and deletion are deferred.
 10. Removed the misleading per-question **Try again** submit button. After a quiz answer, the selected option and feedback remain visible and the options are locked. When the round is complete, **Practice missed questions** starts a new round containing only questions missed in the current round, with selections and feedback cleared. The practice round is local and does not generate new questions or call OpenAI.
+11. Grouped runtime files under `server/` and behavior tests under `tests/`. `server/index.js` is the startup and test entrypoint; the former all-in-one HTTP routes are split by workflow under `server/routes/`. Each route handler returns `true` after sending a response or `false` when unmatched. Shared JSON parsing and generated-result responses live in `server/http.js`. `server/store.js` still writes to root `data/spaces.json`. The browser remains in `public/`, with shared selection state in `public/app.js`; split it only when a clear module interface reduces coupling. `AGENTS.md` records placement rules for future feature chats.
 
 ## Verification and known gaps
 
 - `npm test` covers the legacy API flow and the saved-space quiz flow with mocked OpenAI responses, including create/upload/generate/select/practice missed/restart/reopen, duplicate-answer rejection, a 7,100-character document, and invalid-document cases. The practice interface was checked in a browser against an isolated copy of saved quiz data: a completed round offered the practice action, the next round had no selections or feedback, and answering in that round saved feedback. This did not make a real model request.
-- `flashcards.test.js` covers generation, invalid edits, editing, one rating per card per round, Again-only review, persistence across a server restart, and creating a second deck, with mocked model responses. The browser flashcard flow has not yet been checked against a live model response.
+- `tests/flashcards.test.js` covers generation, invalid edits, editing, one rating per card per round, Again-only review, persistence across a server restart, and creating a second deck, with mocked model responses. The browser flashcard flow has not yet been checked against a live model response.
 - The revised browser workspace was visually checked at 1200px and 390px against isolated fixture data. Switching between Quiz and Flashcards, revealing a card answer, and rating Good showed the next card without losing the selected mode. No live model request was made for this check.
 - The sidebar layout was checked at 1200px and 390px with isolated fixture data. On mobile, opening the library and selecting a different document closed the chooser and changed the workspace header, generation actions, and empty study state to that document. No live model request was made.
 - A later internal-browser pass checked desktop and mobile layouts, quiz answer feedback and missed-question practice, flashcard reveal/rating, document switching, empty-space creation, and the add-document control. It found that saving an edit to the current flashcard left its visible review face stale; the browser now updates that face immediately. The pass showed no horizontal overflow or browser console warnings/errors. It used isolated fixture data and no live model generation.
