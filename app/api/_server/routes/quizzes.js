@@ -9,15 +9,18 @@ function quizRound(run) {
   const questionIds = run.practiceQuestionIds ?? run.questions.map((question) => question.id);
   const attempts = run.attempts.filter((attempt) => (attempt.round ?? 1) === number);
   return { number, questionIds, attempts };
-}export async function handleQuizzes(request, response) {
-  const runRoute = /^\/api\/spaces\/([a-f0-9-]+)\/runs$/.exec(request.url);
+}
+
+export async function handleQuizzes(request) {
+  const pathname = new URL(request.url).pathname;
+  const runRoute = /^\/api\/spaces\/([a-f0-9-]+)\/runs$/.exec(pathname);
   if (request.method === 'POST' && runRoute) {
     const input = await body(request);
     const space = findSpace(await readSpaces(), runRoute[1]);
     const document = space.documents.find((item) => item.id === input.documentId);
     if (!document) throw new Error('Document not found.');
     const generated = await generateQuiz(document.text);
-    return await modelResult(response, generated, (output) => checkQuiz(document.text, output), async (result) => {
+    return await modelResult(generated, (output) => checkQuiz(document.text, output), async (result) => {
       const run = { id: randomUUID(), documentId: document.id, type: 'quiz',
         createdAt: new Date().toISOString(), ...result, attempts: [], currentRound: 1,
         practiceQuestionIds: result.questions.map((question) => question.id) };
@@ -29,7 +32,7 @@ function quizRound(run) {
       result.id = run.id;
     });
   }
-  const answerRoute = /^\/api\/spaces\/([a-f0-9-]+)\/runs\/([a-f0-9-]+)\/answers$/.exec(request.url);
+  const answerRoute = /^\/api\/spaces\/([a-f0-9-]+)\/runs\/([a-f0-9-]+)\/answers$/.exec(pathname);
   if (request.method === 'POST' && answerRoute) {
     const input = await body(request);
     const space = findSpace(await readSpaces(), answerRoute[1]);
@@ -56,13 +59,13 @@ function quizRound(run) {
         savedRun.attempts.push(attempt);
         current.updatedAt = attempt.createdAt;
       });
-      return json(response, 200, { ...attempt, correctIndex: question.correctIndex,
+      return json(200, { ...attempt, correctIndex: question.correctIndex,
         explanation: question.explanation, sourceQuote: question.sourceQuote });
     }
     if (typeof input.answer !== 'string' || !input.answer.trim() || input.answer.length > 2000)
       throw new Error('Write an answer under 2,000 characters.');
     const generated = await gradeAnswer(document.text, question.text, input.answer.trim());
-    return await modelResult(response, generated, (output) => checkFeedback(document.text, output), async (result) => {
+    return await modelResult(generated, (output) => checkFeedback(document.text, output), async (result) => {
       const attempt = { id: randomUUID(), questionId: question.id, answer: input.answer.trim(),
         createdAt: new Date().toISOString(), ...result };
       await updateSpaces((spaces) => {
@@ -74,7 +77,7 @@ function quizRound(run) {
       result.id = attempt.id;
     });
   }
-  const practiceRoute = /^\/api\/spaces\/([a-f0-9-]+)\/runs\/([a-f0-9-]+)\/practice$/.exec(request.url);
+  const practiceRoute = /^\/api\/spaces\/([a-f0-9-]+)\/runs\/([a-f0-9-]+)\/practice$/.exec(pathname);
   if (request.method === 'POST' && practiceRoute) {
     let result;
     await updateSpaces((spaces) => {
@@ -92,7 +95,7 @@ function quizRound(run) {
       space.updatedAt = new Date().toISOString();
       result = { currentRound: run.currentRound, questionIds: missed };
     });
-    return json(response, 200, result);
+    return json(200, result);
   }
-  return false;
+  return null;
 }

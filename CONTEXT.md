@@ -4,7 +4,7 @@ Updated 2026-11-16. `README.md` holds the product brief and run instructions. Th
 
 ## What exists
 
-- A local Next.js App Router and React TypeScript browser app at `http://localhost:3000`, with the existing Node.js API on `127.0.0.1:3001`. `npm run dev` and `npm start` launch both processes; Next rewrites `/api` requests to the API server. Node.js 22.12 or later is required. `npm start` requires `npm run build` first.
+- A local Next.js App Router and React TypeScript app at `http://localhost:3000`. Next.js Route Handlers serve `/api` from the same process. Node.js 22.12 or later is required. `npm start` requires `npm run build` first.
 - A learner creates a named **study space**, adds one or more `.txt` or `.md` documents, previews their text, and chooses one document for a **study session**. Each document must contain 120–20,000 characters. Documents are currently studied one at a time.
 - For a document without either format, the primary Generate action starts independent quiz and flashcard requests. If one fails, the successful result stays saved and the missing format can be generated separately. Independent **Generate quiz/flashcards** and **New quiz/deck** actions work for any selected document. A quiz generation makes one OpenAI Responses API call for a two-to-four-sentence overview and three four-option questions. Quiz selections are checked locally; missed questions can be practiced in a fresh round.
 - Flashcard generation makes a separate OpenAI call for five cards tied to one immutable document. Cards have editable questions and answers and a displayed source excerpt derived from the document. The learner reveals each answer, rates Again or Good, and can review Again cards or all cards in another round. Edits, ratings, rounds, and history persist locally; reviewing makes no model call.
@@ -17,20 +17,20 @@ Updated 2026-11-16. `README.md` holds the product brief and run instructions. Th
 
 | File | Responsibility |
 | --- | --- |
-| `server/index.js` | API HTTP entrypoint, route dispatch, and top-level errors |
-| `server/routes/spaces.js` | Study-space and document routes |
-| `server/routes/quizzes.js` | Quiz generation, answers, and missed-question practice routes |
-| `server/routes/flashcards.js` | Deck generation, card editing, and review routes |
-| `server/routes/legacy.js` | Compatibility routes for the original open-ended API |
-| `server/http.js` | Shared request parsing and JSON/model-result responses |
-| `server/store.js` | Serialized, atomic writes to the local JSON store |
-| `server/model.js` | OpenAI requests, structured output schemas, usage, and cost |
-| `server/study.js` | Source and generated-result validation |
+| `app/api/[...path]/route.js` | Next.js API entrypoint using the Node.js runtime |
+| `app/api/_server/index.js` | Web Request route dispatch and top-level errors |
+| `app/api/_server/routes/spaces.js` | Study-space and document routes |
+| `app/api/_server/routes/quizzes.js` | Quiz generation, answers, and missed-question practice routes |
+| `app/api/_server/routes/flashcards.js` | Deck generation, card editing, and review routes |
+| `app/api/_server/routes/legacy.js` | Compatibility routes for the original open-ended API |
+| `app/api/_server/http.js` | Shared Web Request parsing and JSON/model-result responses |
+| `app/api/_server/store.js` | Serialized, atomic writes to the local JSON store |
+| `app/api/_server/model.js` | OpenAI requests, structured output schemas, usage, and cost |
+| `app/api/_server/study.js` | Source and generated-result validation |
 | `app/` | Next.js route shell and global CSS |
 | `app/_study/` | Study UI, API client, browser response types, and interaction state |
-| `next.config.mjs` | Forwards `/api` requests to the existing API server |
-| `scripts/run.mjs` | Starts both local processes for development or production |
-| `server/config.js` | API port shared by the API server, launcher, and Next rewrite |
+| `next.config.mjs` | Next.js configuration; no API rewrite |
+| `tests/server.js` | HTTP test adapter for the Web Request dispatcher |
 | `tests/study.test.js` | Original API flow and validation tests |
 | `tests/spaces.test.js` | Saved-space API flow, validation, and server-restart persistence test |
 | `tests/flashcards.test.js` | Flashcard generation, editing, review, and persistence tests |
@@ -48,27 +48,29 @@ Updated 2026-11-16. `README.md` holds the product brief and run instructions. Th
 8. Replaced the browser's open-ended question flow with multiple-choice quizzes. A generation call supplies four distinct options, one answer key, a short explanation, and a source-block ID per question. The server validates the structure and block ID, derives the displayed excerpt from the document, then grades selected option indexes locally. Fixed question and option fields in the structured response prevent a variable number of questions or choices. This removes per-answer model calls for new runs. A valid block reference does not prove the generated key or explanation is correct; review examples with real material before treating scores as reliable.
 9. Flashcard decks are independent of quiz runs but use the same selected immutable document. Initial generation calls both routes, and each request validates and saves separately. A deck has five editable cards and saved review rounds. The server accepts one Again/Good rating per card in a round; a completed round can start again with only Again cards or with all cards. Edits preserve card IDs and review history. Answer reveal is browser state; the server cannot verify that a learner revealed before rating. Source-block validation proves the displayed excerpt belongs to the document, not that the answer is correct. Spaced scheduling, Anki export, and deletion are deferred.
 10. Removed the misleading per-question **Try again** submit button. After a quiz answer, the selected option and feedback remain visible and the options are locked. When the round is complete, **Practice missed questions** starts a new round containing only questions missed in the current round, with selections and feedback cleared. The practice round is local and does not generate new questions or call OpenAI.
-11. Grouped API runtime files under `server/` and behavior tests under `tests/`. `server/index.js` is the API startup and test entrypoint; the former all-in-one HTTP routes are split by workflow under `server/routes/`. Each route handler returns `true` after sending a response or `false` when unmatched. Shared JSON parsing and generated-result responses live in `server/http.js`. `server/store.js` still writes to root `data/spaces.json`.
-12. Migrated the browser to Next.js App Router with React and TypeScript in `app/`. The UI still calls the existing `/api/spaces` routes, and `next.config.mjs` forwards those requests to the separate Node API server. The API, model calls, source validation, and `data/spaces.json` format are unchanged. React views own library, quiz, and flashcard interactions; `app/_study/study-app.tsx` owns shared selection state and refreshes from the API after saved actions. The native modal dialog, hash-based last-space selection, partial quiz/flashcard generation success, legacy open-ended runs, and request-usage details remain supported. `scripts/run.mjs` starts both processes. The local JSON store still needs replacement before multi-instance or serverless deployment.
-13. Kept the Next route shell (`layout.tsx`, `page.tsx`, and global CSS) at the root of `app/` and grouped the study implementation in the private `app/_study/` folder. The server route structure already matches its workflows and remains in place. The library owns its native dialog mechanics, the space selection path shares one state update, and flashcard edits use the normal API refresh path so the current review face updates. `server/config.js` supplies the API port to the server, launcher, and Next rewrite.
+11. Originally grouped API runtime files under `server/` and behavior tests under `tests/`, with HTTP routes split by workflow. The API modules now live under `app/api/_server/`; the route functions return Web `Response` objects or `null` when unmatched. The store still writes to root `data/spaces.json`.
+12. Migrated the browser to Next.js App Router with React and TypeScript in `app/`. React views own library, quiz, and flashcard interactions; `app/_study/study-app.tsx` owns shared selection state and refreshes from the API after saved actions. The native modal dialog, hash-based last-space selection, partial quiz/flashcard generation success, legacy open-ended runs, and request-usage details remain supported.
+13. Kept the Next route shell (`layout.tsx`, `page.tsx`, and global CSS) at the root of `app/` and grouped the study implementation in the private `app/_study/` folder. The server route structure matches its workflows. The library owns its native dialog mechanics, the space selection path shares one state update, and flashcard edits use the normal API refresh path so the current review face updates.
+14. Moved the HTTP API into a Next.js Node.js Route Handler at `app/api/[...path]/route.js`. The workflow modules now accept Web `Request` objects and return Web `Response` objects, with `app/api/_server/index.js` dispatching and handling errors. Browser URLs, response shapes, model calls, validation, legacy endpoints, and `data/spaces.json` remain the same. Removed the `/api` rewrite, API port configuration, and two-process launcher. `npm run dev` and `npm start` now launch only Next.js. The JSON store is still suitable only for one process with persistent local disk; the route migration does not make it safe for multi-instance or serverless hosting.
+15. Moved the server-side API modules from the top-level `server/` directory into the private `app/api/_server/` directory. This is a code placement cleanup; Next.js already ran the modules through the Route Handler. The store's default path was adjusted so existing root `data/spaces.json` is reused without migration. After the move, `npm test`, `npm run typecheck`, and `npm run build` passed; a production-style GET of `/api/spaces` returned the existing saved spaces.
 
 ## Server and storage decision status
 
-The choices below were discussed after the Next.js UI migration. The current architecture remains in place; none of the possible migrations in this table has been selected or implemented.
+The storage and hosting choices below remain open after the HTTP route migration.
 
 | Topic | Current implementation | Discussed direction and status |
 | --- | --- | --- |
-| HTTP API | A separate Node server handles `/api` and Next.js rewrites requests to it. | Moving the HTTP routes into Next.js Route Handlers could remove the second process. Preserve existing URLs, responses, legacy routes, model and validation behavior, and saved-data compatibility if chosen. **Open.** |
-| Study data | `server/store.js` saves document text, generated material, API request bodies, and study history in local `data/spaces.json`. Writes are serialized only within this process. | Managed PostgreSQL was considered for a hosted multi-user app. Browser-local IndexedDB with export/import was considered to avoid server-side retention of readable study data. Neither replaces the current store yet. **Open.** |
+| HTTP API | Next.js Node.js Route Handlers serve `/api` in the same process as the browser app. | The separate API process and rewrite have been removed. **Implemented.** |
+| Study data | `app/api/_server/store.js` saves document text, generated material, API request bodies, and study history in local `data/spaces.json`. Writes are serialized only within this process. | Managed PostgreSQL was considered for a hosted multi-user app. Browser-local IndexedDB with export/import was considered to avoid server-side retention of readable study data. Neither replaces the current store yet. **Open.** |
 | Sync and recovery | Saved work is available on the local server only. There are no accounts or data export/import controls. | Optional client-encrypted sync could provide multi-device recovery while the sync service stores ciphertext. It would require accounts, key recovery, conflict handling, and a clear explanation of what metadata remains visible. **Open.** |
 | AI data flow | The server sends selected document text to OpenAI for generation with `store: false`; the app also saves source text and the exact request body locally. | A future stateless endpoint could stop *this app* from persisting material, but generation would still send readable text through the server to OpenAI. No on-device model or no-retention guarantee has been chosen. **Open.** |
 | Public deployment | Local prototype bound to `127.0.0.1`; no authentication or deletion UI. | Hosting, storage, access control, deletion, backups or export, and operational limits must be designed together before inviting public users. **Open.** |
 
-Do not describe local-first storage, encrypted sync, an integrated Next.js API, or zero data retention as existing features. Revisit these alternatives when choosing the first hosted release's privacy and recovery requirements.
+Do not describe local-first storage, encrypted sync, or zero data retention as existing features. Revisit these alternatives when choosing the first hosted release's privacy and recovery requirements.
 
 ## Verification and known gaps
 
-- After the Next.js migration and folder cleanup, `npm test` passes the six existing API tests and two DOM interaction tests. The UI tests cover reopening a space, library document selection, quiz answering, flashcard editing and reveal/rating, and a quiz generation failure that leaves a successful deck saved and shows request details. `npm run typecheck` and `npm run build` pass. A local production run returned HTTP 200 for the Next page, proxied `/api/spaces`, and direct API. Browser automation was unavailable in this chat, so the migrated UI has not yet received a visual browser check.
+- After the HTTP route migration, `npm test` passes six API tests through the Web Request dispatcher and two DOM interaction tests. `npm run typecheck` and `npm run build` pass; the build lists `/api/[...path]` as a dynamic route. A production-style `npm start` returned HTTP 200 for the page and `/api/spaces`, HTTP 400 for invalid JSON sent to the legacy `/api/session` route, and created and reopened a study space using an isolated data directory. The UI tests cover reopening a space, library document selection, quiz answering, flashcard editing and reveal/rating, and a quiz generation failure that leaves a successful deck saved and shows request details.
 - `npm test` covers the legacy API flow and the saved-space quiz flow with mocked OpenAI responses, including create/upload/generate/select/practice missed/restart/reopen, duplicate-answer rejection, a 7,100-character document, and invalid-document cases. The practice interface was checked in a browser against an isolated copy of saved quiz data: a completed round offered the practice action, the next round had no selections or feedback, and answering in that round saved feedback. This did not make a real model request.
 - `tests/flashcards.test.js` covers generation, invalid edits, editing, one rating per card per round, Again-only review, persistence across a server restart, and creating a second deck, with mocked model responses. The browser flashcard flow has not yet been checked against a live model response.
 - The revised browser workspace was visually checked at 1200px and 390px against isolated fixture data. Switching between Quiz and Flashcards, revealing a card answer, and rating Good showed the next card without losing the selected mode. No live model request was made for this check.
@@ -78,4 +80,4 @@ Do not describe local-first storage, encrypted sync, an integrated Next.js API, 
 - A fresh 7,013-character document produced 422s with the previous quiz schema: one response did not have exactly three questions, and another had three questions but no exact quote matches. After switching to fixed question fields and source-block IDs, one live generation call for that document validated as three four-option questions with source excerpts found in the text. The user's running server must be restarted to load this change.
 - Quote matching proves only that the text appears in the source, not that the question or grading is justified. Build a small repeatable quality evaluation set.
 - PDF support needs text extraction and a source-preview step. Larger documents and multiple active documents need section selection or retrieval before model calls.
-- The local server binds to `127.0.0.1` and has no authentication. Add auth, storage isolation, deletion, and operational controls before any public deployment.
+- The Next.js API has no authentication. Add auth, storage isolation, deletion, and operational controls before any public deployment.

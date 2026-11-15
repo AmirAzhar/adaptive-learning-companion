@@ -3,8 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node --env-file=.env scripts/run.mjs dev",
-    "start": "node --env-file=.env scripts/run.mjs start",
+    "dev": "next dev",
+    "start": "next start",
     "build": "next build",
     "typecheck": "tsc --noEmit",
     "test": "node --test && tsx --test tests/ui.test.tsx"

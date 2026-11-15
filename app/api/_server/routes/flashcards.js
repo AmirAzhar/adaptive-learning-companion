@@ -4,15 +4,16 @@ import { generateFlashcards } from '../model.js';
 import { findSpace, readSpaces, updateSpaces } from '../store.js';
 import { body, json, modelResult } from '../http.js';
 
-export async function handleFlashcards(request, response) {
-  const deckRoute = /^\/api\/spaces\/([a-f0-9-]+)\/decks$/.exec(request.url);
+export async function handleFlashcards(request) {
+  const pathname = new URL(request.url).pathname;
+  const deckRoute = /^\/api\/spaces\/([a-f0-9-]+)\/decks$/.exec(pathname);
   if (request.method === 'POST' && deckRoute) {
     const input = await body(request);
     const space = findSpace(await readSpaces(), deckRoute[1]);
     const document = space.documents.find((item) => item.id === input.documentId);
     if (!document) throw new Error('Document not found.');
     const generated = await generateFlashcards(document.text);
-    return await modelResult(response, generated, (output) => checkFlashcards(document.text, output), async (result) => {
+    return await modelResult(generated, (output) => checkFlashcards(document.text, output), async (result) => {
       const deck = { id: randomUUID(), documentId: document.id, createdAt: new Date().toISOString(),
         ...result, reviews: [], currentRound: 1, reviewCardIds: result.cards.map((card) => card.id) };
       await updateSpaces((spaces) => {
@@ -23,7 +24,7 @@ export async function handleFlashcards(request, response) {
       result.id = deck.id;
     });
   }
-  const cardEditRoute = /^\/api\/spaces\/([a-f0-9-]+)\/decks\/([a-f0-9-]+)\/cards\/([1-5])$/.exec(request.url);
+  const cardEditRoute = /^\/api\/spaces\/([a-f0-9-]+)\/decks\/([a-f0-9-]+)\/cards\/([1-5])$/.exec(pathname);
   if (request.method === 'POST' && cardEditRoute) {
     const input = await body(request);
     const front = typeof input.front === 'string' ? input.front.trim() : '';
@@ -41,9 +42,9 @@ export async function handleFlashcards(request, response) {
       card.back = back;
       space.updatedAt = new Date().toISOString();
     });
-    return json(response, 200, { saved: true });
+    return json(200, { saved: true });
   }
-  const cardReviewRoute = /^\/api\/spaces\/([a-f0-9-]+)\/decks\/([a-f0-9-]+)\/cards\/([1-5])\/reviews$/.exec(request.url);
+  const cardReviewRoute = /^\/api\/spaces\/([a-f0-9-]+)\/decks\/([a-f0-9-]+)\/cards\/([1-5])\/reviews$/.exec(pathname);
   if (request.method === 'POST' && cardReviewRoute) {
     const input = await body(request);
     if (!['again', 'good'].includes(input.rating)) throw new Error('Choose Again or Good.');
@@ -60,9 +61,9 @@ export async function handleFlashcards(request, response) {
       deck.reviews.push(review);
       space.updatedAt = review.createdAt;
     });
-    return json(response, 200, review);
+    return json(200, review);
   }
-  const reviewRoundRoute = /^\/api\/spaces\/([a-f0-9-]+)\/decks\/([a-f0-9-]+)\/review$/.exec(request.url);
+  const reviewRoundRoute = /^\/api\/spaces\/([a-f0-9-]+)\/decks\/([a-f0-9-]+)\/review$/.exec(pathname);
   if (request.method === 'POST' && reviewRoundRoute) {
     const input = await body(request);
     if (!['again', 'all'].includes(input.scope)) throw new Error('Choose cards to review.');
@@ -82,7 +83,7 @@ export async function handleFlashcards(request, response) {
       space.updatedAt = new Date().toISOString();
       result = { currentRound: deck.currentRound, cardIds };
     });
-    return json(response, 200, result);
+    return json(200, result);
   }
-  return false;
+  return null;
 }
