@@ -61,15 +61,14 @@ function mockApi(space: Space) {
   };
 }
 
-test('Next UI reopens a saved space and saves quiz and flashcard practice through the existing API', async () => {
+test('library opens a document and saves quiz and flashcard practice through the existing API', async () => {
   const space = fixture(); mockApi(space);
   render(<StudyApp />);
+  await screen.findByRole('heading', { name: 'Study spaces' });
+  fireEvent.click(await screen.findByRole('button', { name: /Databases/ }));
+  fireEvent.click(await screen.findByRole('button', { name: /notes.txt/ }));
   await screen.findByText(/What does an index help\?/);
-  assert.equal(window.location.hash, '#space-1');
-  fireEvent.click(screen.getByRole('button', { name: 'Toggle library' }));
-  assert.ok(document.querySelector('#library-sidebar'));
-  fireEvent.click(screen.getByRole('button', { name: 'notes.txt' }));
-  assert.equal(document.getElementById('library-toggle')?.getAttribute('aria-expanded'), 'false');
+  assert.equal(window.location.hash, '#space-1/doc-1');
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 250)); });
   fireEvent.click(screen.getByRole('radio', { name: 'Find rows' }));
   fireEvent.click(screen.getByRole('button', { name: 'Check answer' }));
@@ -86,6 +85,7 @@ test('Next UI reopens a saved space and saves quiz and flashcard practice throug
   await screen.findByText('1 Good · 0 Again');
   assert.equal(space.decks![0].reviews.length, 1);
   cleanup();
+  window.history.replaceState(null, '', '/');
 });
 
 test('a failed quiz generation keeps the saved flashcard deck and shows request details', async () => {
@@ -101,6 +101,8 @@ test('a failed quiz generation keeps the saved flashcard deck and shows request 
     throw new Error(`Unexpected request: ${path}`);
   };
   render(<StudyApp />);
+  fireEvent.click(await screen.findByRole('button', { name: /Databases/ }));
+  fireEvent.click(await screen.findByRole('button', { name: /notes.txt/ }));
   await screen.findByRole('button', { name: 'Generate quiz and flashcards' });
   fireEvent.click(screen.getByRole('button', { name: 'Generate quiz and flashcards' }));
   await screen.findByText(/Saved flashcards.*quiz failed/);
@@ -110,29 +112,30 @@ test('a failed quiz generation keeps the saved flashcard deck and shows request 
   fireEvent.click(screen.getByRole('button', { name: 'Flashcards' }));
   await screen.findByRole('button', { name: 'Reveal answer' });
   cleanup();
+  window.history.replaceState(null, '', '/');
 });
 
-test('desktop library stays beside the workspace and can be resized from the keyboard', async () => {
-  const previousMatchMedia = window.matchMedia;
-  window.matchMedia = query => ({ matches: query === '(min-width:900px)', media: query, onchange: null, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {}, dispatchEvent: () => false });
-  window.localStorage.clear();
+test('spaces and documents can be searched and navigated without a persistent sidebar', async () => {
   const space = fixture(); mockApi(space);
   try {
     render(<StudyApp />);
+    const spaceSearch = await screen.findByRole('textbox', { name: 'Find a space' });
+    fireEvent.change(spaceSearch, { target: { value: 'missing' } });
+    assert.ok(screen.getByText('No spaces match your search.'));
+    fireEvent.change(spaceSearch, { target: { value: 'data' } });
+    fireEvent.click(screen.getByRole('button', { name: /Databases/ }));
+    const documentSearch = await screen.findByRole('textbox', { name: 'Find a document' });
+    fireEvent.change(documentSearch, { target: { value: 'other' } });
+    assert.ok(screen.getByText('No documents match your search.'));
+    fireEvent.change(documentSearch, { target: { value: 'notes' } });
+    fireEvent.click(screen.getByRole('button', { name: /notes.txt/ }));
     await screen.findByText(/What does an index help\?/);
-    const resize = await screen.findByRole('separator', { name: 'Resize library' });
-    assert.equal(resize.getAttribute('aria-valuenow'), '300');
-    assert.equal(document.querySelector('.desktop-main')?.getAttribute('style'), '--library-width: 300px;');
-    fireEvent.keyDown(resize, { key: 'ArrowRight' });
-    assert.equal(resize.getAttribute('aria-valuenow'), '310');
-    assert.equal(window.localStorage.getItem('study-library-width'), '310');
-    fireEvent.click(screen.getByRole('button', { name: 'notes.txt' }));
-    assert.equal(screen.getByRole('button', { name: 'Toggle library' }).getAttribute('aria-expanded'), 'true');
-    fireEvent.click(screen.getByRole('button', { name: 'Toggle library' }));
-    assert.equal(screen.getByRole('button', { name: 'Toggle library' }).getAttribute('aria-expanded'), 'false');
+    fireEvent.click(screen.getByRole('button', { name: '← Databases documents' }));
+    await screen.findByRole('heading', { name: 'Documents (1)' });
+    fireEvent.click(screen.getByRole('button', { name: '← All spaces' }));
+    await screen.findByRole('heading', { name: 'Study spaces' });
   } finally {
     cleanup();
-    window.matchMedia = previousMatchMedia;
-    window.localStorage.clear();
+    window.history.replaceState(null, '', '/');
   }
 });
