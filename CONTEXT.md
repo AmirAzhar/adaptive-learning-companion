@@ -1,6 +1,6 @@
 # Development handoff
 
-Updated 2026-11-14. `README.md` holds the product brief and run instructions. The code is the source of truth if these notes become stale.
+Updated 2026-11-16. `README.md` holds the product brief and run instructions. The code is the source of truth if these notes become stale.
 
 ## What exists
 
@@ -51,6 +51,20 @@ Updated 2026-11-14. `README.md` holds the product brief and run instructions. Th
 11. Grouped API runtime files under `server/` and behavior tests under `tests/`. `server/index.js` is the API startup and test entrypoint; the former all-in-one HTTP routes are split by workflow under `server/routes/`. Each route handler returns `true` after sending a response or `false` when unmatched. Shared JSON parsing and generated-result responses live in `server/http.js`. `server/store.js` still writes to root `data/spaces.json`.
 12. Migrated the browser to Next.js App Router with React and TypeScript in `app/`. The UI still calls the existing `/api/spaces` routes, and `next.config.mjs` forwards those requests to the separate Node API server. The API, model calls, source validation, and `data/spaces.json` format are unchanged. React views own library, quiz, and flashcard interactions; `app/_study/study-app.tsx` owns shared selection state and refreshes from the API after saved actions. The native modal dialog, hash-based last-space selection, partial quiz/flashcard generation success, legacy open-ended runs, and request-usage details remain supported. `scripts/run.mjs` starts both processes. The local JSON store still needs replacement before multi-instance or serverless deployment.
 13. Kept the Next route shell (`layout.tsx`, `page.tsx`, and global CSS) at the root of `app/` and grouped the study implementation in the private `app/_study/` folder. The server route structure already matches its workflows and remains in place. The library owns its native dialog mechanics, the space selection path shares one state update, and flashcard edits use the normal API refresh path so the current review face updates. `server/config.js` supplies the API port to the server, launcher, and Next rewrite.
+
+## Server and storage decision status
+
+The choices below were discussed after the Next.js UI migration. The current architecture remains in place; none of the possible migrations in this table has been selected or implemented.
+
+| Topic | Current implementation | Discussed direction and status |
+| --- | --- | --- |
+| HTTP API | A separate Node server handles `/api` and Next.js rewrites requests to it. | Moving the HTTP routes into Next.js Route Handlers could remove the second process. Preserve existing URLs, responses, legacy routes, model and validation behavior, and saved-data compatibility if chosen. **Open.** |
+| Study data | `server/store.js` saves document text, generated material, API request bodies, and study history in local `data/spaces.json`. Writes are serialized only within this process. | Managed PostgreSQL was considered for a hosted multi-user app. Browser-local IndexedDB with export/import was considered to avoid server-side retention of readable study data. Neither replaces the current store yet. **Open.** |
+| Sync and recovery | Saved work is available on the local server only. There are no accounts or data export/import controls. | Optional client-encrypted sync could provide multi-device recovery while the sync service stores ciphertext. It would require accounts, key recovery, conflict handling, and a clear explanation of what metadata remains visible. **Open.** |
+| AI data flow | The server sends selected document text to OpenAI for generation with `store: false`; the app also saves source text and the exact request body locally. | A future stateless endpoint could stop *this app* from persisting material, but generation would still send readable text through the server to OpenAI. No on-device model or no-retention guarantee has been chosen. **Open.** |
+| Public deployment | Local prototype bound to `127.0.0.1`; no authentication or deletion UI. | Hosting, storage, access control, deletion, backups or export, and operational limits must be designed together before inviting public users. **Open.** |
+
+Do not describe local-first storage, encrypted sync, an integrated Next.js API, or zero data retention as existing features. Revisit these alternatives when choosing the first hosted release's privacy and recovery requirements.
 
 ## Verification and known gaps
 
