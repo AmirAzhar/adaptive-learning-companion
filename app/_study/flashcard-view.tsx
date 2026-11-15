@@ -1,6 +1,13 @@
 'use client';
 
 import { useState } from 'react';
+import Button from '@mui/material/Button';
+import Accordion from '@mui/material/Accordion';
+import AccordionSummary from '@mui/material/AccordionSummary';
+import AccordionDetails from '@mui/material/AccordionDetails';
+import Paper from '@mui/material/Paper';
+import TextField from '@mui/material/TextField';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import RequestDetails from './request-details';
 import type { AppError, Deck, Flashcard, Space } from './types';
 
@@ -21,9 +28,9 @@ function CardEdit({ card, deck, spaceId, onAction }: { card: Flashcard; deck: De
     finally { setBusy(false); }
   }
   return <form className="card-edit-form" onSubmit={save}>
-    <label>Card {card.id} · Question<textarea value={front} onChange={event => setFront(event.target.value)} maxLength={500} required /></label>
-    <label>Answer<textarea value={back} onChange={event => setBack(event.target.value)} maxLength={2000} required /></label>
-    <blockquote>{card.sourceQuote}</blockquote><button type="submit" disabled={busy}>Save card</button><span className="edit-feedback">{feedback}</span>
+    <TextField label={`Card ${card.id} · Question`} multiline fullWidth required value={front} onChange={event => setFront(event.target.value)} slotProps={{ htmlInput: { maxLength: 500 } }} />
+    <TextField label="Answer" multiline fullWidth required value={back} onChange={event => setBack(event.target.value)} slotProps={{ htmlInput: { maxLength: 2000 } }} />
+    <blockquote>{card.sourceQuote}</blockquote><Button type="submit" disabled={busy}>Save card</Button><span className="edit-feedback">{feedback}</span>
   </form>;
 }
 
@@ -36,12 +43,12 @@ function ReviewCard({ deck, card, spaceId, onAction }: { deck: Deck; card: Flash
     catch { /* The parent shows the API error in the page status. */ }
     finally { setBusy(false); }
   }
-  return <section className="flashcard-review"><h4>{card.front}</h4>
-    {!revealed ? <button type="button" onClick={() => setRevealed(true)}>Reveal answer</button> : <div>
+  return <Paper component="section" className="flashcard-review" variant="outlined"><h4>{card.front}</h4>
+    {!revealed ? <Button type="button" onClick={() => setRevealed(true)}>Reveal answer</Button> : <div>
       <p className="card-answer">{card.back}</p><blockquote>{card.sourceQuote}</blockquote>
-      <div className="generation-actions"><button type="button" disabled={busy} onClick={() => rate('again')}>Again</button><button type="button" disabled={busy} onClick={() => rate('good')}>Good</button></div>
+      <div className="generation-actions"><Button type="button" variant="outlined" disabled={busy} onClick={() => rate('again')}>Again</Button><Button type="button" disabled={busy} onClick={() => rate('good')}>Good</Button></div>
     </div>}
-  </section>;
+  </Paper>;
 }
 
 function DeckView({ deck, space, onAction }: { deck: Deck; space: Space; onAction: Action }) {
@@ -57,22 +64,22 @@ function DeckView({ deck, space, onAction }: { deck: Deck; space: Space; onActio
     catch { /* The parent shows the API error in the page status. */ }
     finally { setBusy(false); }
   }
-  return <article className="panel run">
+  return <Paper component="article" className="panel run" elevation={0}>
     <h3>{source?.name || 'Document'} · {new Date(deck.createdAt).toLocaleString()}</h3>
     <RequestDetails result={deck} />
-    <details className="card-editor"><summary>Edit {deck.cards.length} cards and check sources</summary>
+    <Accordion className="card-editor" disableGutters elevation={0}><AccordionSummary expandIcon={<ExpandMoreIcon />}>Edit {deck.cards.length} cards and check sources</AccordionSummary><AccordionDetails>
       {deck.cards.map(card => <CardEdit key={card.id} card={card} deck={deck} spaceId={space.id} onAction={onAction} />)}
-    </details>
+    </AccordionDetails></Accordion>
     <p className="quiz-progress">Review round {deck.currentRound} · {roundReviews.length} of {deck.reviewCardIds.length} rated</p>
     {card ? <ReviewCard key={`${deck.currentRound}-${card.id}`} deck={deck} card={card} spaceId={space.id} onAction={onAction} /> : <>
       <p>{roundReviews.length - againCount} Good · {againCount} Again</p>
-      {againCount > 0 && <button type="button" disabled={busy} onClick={() => review('again')}>Review Again cards</button>}{' '}
-      <button type="button" className="secondary" disabled={busy} onClick={() => review('all')}>Study all cards again</button>
+      {againCount > 0 && <Button type="button" disabled={busy} onClick={() => review('again')}>Review Again cards</Button>}{' '}
+      <Button type="button" variant="outlined" disabled={busy} onClick={() => review('all')}>Study all cards again</Button>
     </>}
-    {deck.currentRound > 1 && <details className="quiz-history"><summary>Previous reviews</summary>
+    {deck.currentRound > 1 && <Accordion className="quiz-history" disableGutters elevation={0}><AccordionSummary expandIcon={<ExpandMoreIcon />}>Previous reviews</AccordionSummary><AccordionDetails>
       {deck.reviews.filter(item => item.round < deck.currentRound).map((item, index) => <p key={index}>Round {item.round} · Card {item.cardId}: {item.rating === 'again' ? 'Again' : 'Good'}</p>)}
-    </details>}
-  </article>;
+    </AccordionDetails></Accordion>}
+  </Paper>;
 }
 
 export default function FlashcardView({ space, selectedDocumentId, selectedDeckId, onSelect, onAction }: Props) {
@@ -81,8 +88,8 @@ export default function FlashcardView({ space, selectedDocumentId, selectedDeckI
   const chosen = decks.find(deck => deck.id === selectedDeckId) ?? reversed[0];
   return <section id="cards-pane" className="study-pane" aria-label="Flashcard practice">
     <div className="study-pane-heading"><div><h3>Flashcards</h3><p>Think of your answer before you reveal it, then choose Again or Good.</p></div>
-      {decks.length > 1 && <div id="deck-picker-wrap" className="history-picker"><label htmlFor="deck-picker">Saved deck</label>
-        <select id="deck-picker" value={chosen.id} onChange={event => onSelect(event.target.value)}>{reversed.map((deck, index) => <option key={deck.id} value={deck.id}>Deck {decks.length - index} · {new Date(deck.createdAt).toLocaleString()}</option>)}</select>
+      {decks.length > 1 && <div id="deck-picker-wrap" className="history-picker">
+        <TextField id="deck-picker" label="Saved deck" select fullWidth size="small" slotProps={{ select: { native: true } }} value={chosen.id} onChange={event => onSelect(event.target.value)}>{reversed.map((deck, index) => <option key={deck.id} value={deck.id}>Deck {decks.length - index} · {new Date(deck.createdAt).toLocaleString()}</option>)}</TextField>
       </div>}
     </div>
     <div id="decks">{chosen ? <DeckView key={chosen.id} deck={chosen} space={space} onAction={onAction} /> : selectedDocumentId ? 'No flashcards for this document yet. Generate a deck above to start reviewing.' : 'Add a document from the library to make flashcards.'}</div>

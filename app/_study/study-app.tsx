@@ -1,6 +1,17 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Button from '@mui/material/Button';
+import Accordion from '@mui/material/Accordion';
+import AccordionSummary from '@mui/material/AccordionSummary';
+import AccordionDetails from '@mui/material/AccordionDetails';
+import Alert from '@mui/material/Alert';
+import Paper from '@mui/material/Paper';
+import ButtonGroup from '@mui/material/ButtonGroup';
+import IconButton from '@mui/material/IconButton';
+import useMediaQuery from '@mui/material/useMediaQuery';
+import MenuIcon from '@mui/icons-material/Menu';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { api } from './api';
 import Library from './library';
 import QuizView from './quiz-view';
@@ -22,6 +33,22 @@ export default function StudyApp() {
   const [failures, setFailures] = useState<{ kind: Kind; error: AppError }[]>([]);
   const [busy, setBusy] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerWidth, setDrawerWidth] = useState(300);
+  const desktop = useMediaQuery('(min-width:900px)');
+
+  useEffect(() => {
+    setDrawerOpen(desktop);
+  }, [desktop]);
+
+  useEffect(() => {
+    const saved = Number(window.localStorage.getItem('study-library-width'));
+    if (saved >= 240 && saved <= 480) setDrawerWidth(saved);
+  }, []);
+
+  function commitDrawerWidth(width: number) {
+    setDrawerWidth(width);
+    window.localStorage.setItem('study-library-width', String(width));
+  }
 
   function report(error: unknown) {
     const cause = error as AppError;
@@ -68,12 +95,12 @@ export default function StudyApp() {
   async function selectSpace(id: string) {
     try {
       const next = await openSpace(id);
-      setDrawerOpen(!next.documents.length);
+      setDrawerOpen(desktop || !next.documents.length);
     } catch (error) { report(error); }
   }
   function selectDocument(id: string) {
     setSelectedDocumentId(id);
-    setDrawerOpen(false);
+    if (!desktop) setDrawerOpen(false);
   }
   async function createSpace(title: string) {
     try {
@@ -93,7 +120,7 @@ export default function StudyApp() {
       const result = await api<{ document: StudyDocument }>(`/api/spaces/${space.id}/documents`, { name: file.name, text });
       setSelectedDocumentId(result.document.id);
       await openSpace(space.id);
-      setDrawerOpen(false);
+      if (!desktop) setDrawerOpen(false);
       setNotice({ text: 'Document saved. Generate study materials when you are ready.' });
     } catch (error) { report(error); throw error; }
   }
@@ -129,33 +156,33 @@ export default function StudyApp() {
 
   return <>
     <header className="site-header"><div className="site-header-inner">
+      <IconButton id="library-toggle" type="button" aria-label="Toggle library" aria-controls="library-sidebar" aria-expanded={drawerOpen} onClick={() => setDrawerOpen(!drawerOpen)}><MenuIcon /></IconButton>
       <span className="brand-mark" aria-hidden="true">✦</span><div><p className="eyebrow">Adaptive Learning Companion</p><p className="site-title">Study spaces</p></div>
       <p className="site-tagline">Turn notes into practice worth returning to.</p>
-      <button id="library-toggle" type="button" aria-controls="library-sidebar" aria-expanded={drawerOpen} onClick={() => setDrawerOpen(!drawerOpen)}><svg viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="M3 5h14M3 10h14M3 15h14"/></svg>Library</button>
     </div></header>
-    <main>
-      <Library open={drawerOpen} onOpenChange={setDrawerOpen} spaces={spaces} space={space} selectedDocumentId={selectedDocumentId} onSpace={selectSpace} onDocument={selectDocument} onCreateSpace={createSpace} onAddDocument={addDocument} />
+    <Library open={drawerOpen} desktop={desktop} width={drawerWidth} onWidthChange={setDrawerWidth} onWidthCommit={commitDrawerWidth} onOpenChange={setDrawerOpen} spaces={spaces} space={space} selectedDocumentId={selectedDocumentId} onSpace={selectSpace} onDocument={selectDocument} onCreateSpace={createSpace} onAddDocument={addDocument} />
+    <main className={desktop ? 'desktop-main' : undefined} style={desktop ? { '--library-width': `${drawerOpen ? drawerWidth : 0}px` } as React.CSSProperties : undefined}>
       <div className="main-column">
-        <div id="status" role="status" aria-live="polite">{notice?.text}{notice?.details && <RequestDetails result={notice.details} />}{failures.map((item, index) => <div key={index}><p>{item.kind}: {item.error.message}</p><RequestDetails result={item.error.details} /></div>)}</div>
+        <div id="status" role="status" aria-live="polite">{notice?.text && <Alert severity={failures.length ? 'warning' : 'info'}>{notice.text}</Alert>}{notice?.details && <RequestDetails result={notice.details} />}{failures.map((item, index) => <div key={index}><Alert severity="error">{item.kind}: {item.error.message}</Alert><RequestDetails result={item.error.details} /></div>)}</div>
         {space && <section id="space" aria-labelledby="active-document-name">
-          <div className="workspace-header panel">
+          <Paper className="workspace-header panel" variant="outlined">
             <p id="space-name" className="workspace-breadcrumb">{space.title}</p>
             <div className="workspace-title-row"><div><span className="eyebrow">Current document</span>
               <h1 id="active-document-name">{source?.name ?? (space.documents.length ? 'Choose a document' : 'Add your first document')}</h1>
               <p id="document-meta" className="document-summary">{source ? `${source.text.length.toLocaleString()} characters · added ${new Date(source.createdAt).toLocaleDateString()}` : 'Choose a .txt or .md file from the library.'}</p>
             </div><div className="workspace-accent" aria-hidden="true">✦</div></div>
-            {source && <details id="document-preview"><summary>Read source text</summary><pre id="preview-text">{source.text}</pre></details>}
+            {source && <Accordion id="document-preview" disableGutters elevation={0}><AccordionSummary expandIcon={<ExpandMoreIcon />}>Read source text</AccordionSummary><AccordionDetails><pre id="preview-text">{source.text}</pre></AccordionDetails></Accordion>}
             <form id="run-form" className="generation-area" onSubmit={event => { event.preventDefault(); generate(initialKinds); }}>
               <p className="generation-note">Generate study material from this document. Each format makes a separate OpenAI request.</p>
               <div className="generation-actions">
-                {initialKinds.length > 0 && <button id="start" type="submit" disabled={!source || busy}>{hasQuiz ? 'Generate flashcards' : hasDeck ? 'Generate quiz' : 'Generate quiz and flashcards'}</button>}
-                <button id="quiz-only" type="button" className="secondary" disabled={!source || busy} onClick={() => generate(['quiz'])}>{hasQuiz ? 'New quiz' : 'Generate quiz'}</button>
-                <button id="cards-only" type="button" className="secondary" disabled={!source || busy} onClick={() => generate(['flashcards'])}>{hasDeck ? 'New deck' : 'Generate flashcards'}</button>
+                {initialKinds.length > 0 && <Button id="start" type="submit" disabled={!source || busy}>{hasQuiz ? 'Generate flashcards' : hasDeck ? 'Generate quiz' : 'Generate quiz and flashcards'}</Button>}
+                <Button id="quiz-only" type="button" variant="outlined" disabled={!source || busy} onClick={() => generate(['quiz'])}>{hasQuiz ? 'New quiz' : 'Generate quiz'}</Button>
+                <Button id="cards-only" type="button" variant="outlined" disabled={!source || busy} onClick={() => generate(['flashcards'])}>{hasDeck ? 'New deck' : 'Generate flashcards'}</Button>
               </div>
             </form>
-          </div>
+          </Paper>
           <div className="mode-header"><div><span className="eyebrow">Practice</span><h2>Study this document</h2></div>
-            <div className="mode-switch" aria-label="Study mode"><button id="mode-quiz" type="button" aria-pressed={mode === 'quiz'} onClick={() => setMode('quiz')}>Quiz</button><button id="mode-cards" type="button" aria-pressed={mode === 'cards'} onClick={() => setMode('cards')}>Flashcards</button></div>
+            <ButtonGroup className="mode-switch" aria-label="Study mode"><Button id="mode-quiz" type="button" variant={mode === 'quiz' ? 'contained' : 'text'} aria-pressed={mode === 'quiz'} onClick={() => setMode('quiz')}>Quiz</Button><Button id="mode-cards" type="button" variant={mode === 'cards' ? 'contained' : 'text'} aria-pressed={mode === 'cards'} onClick={() => setMode('cards')}>Flashcards</Button></ButtonGroup>
           </div>
           {mode === 'quiz' ? <QuizView space={space} selectedDocumentId={selectedDocumentId} selectedRunId={selectedRunId} onSelect={setSelectedRunId} onAction={action} />
             : <FlashcardView space={space} selectedDocumentId={selectedDocumentId} selectedDeckId={selectedDeckId} onSelect={setSelectedDeckId} onAction={action} />}

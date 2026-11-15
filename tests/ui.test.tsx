@@ -9,14 +9,18 @@ Object.assign(globalThis, {
   window: dom.window,
   document: dom.window.document,
   HTMLElement: dom.window.HTMLElement,
+  Node: dom.window.Node,
+  Element: dom.window.Element,
+  DocumentFragment: dom.window.DocumentFragment,
+  getComputedStyle: dom.window.getComputedStyle.bind(dom.window),
+  requestAnimationFrame: (callback: FrameRequestCallback) => setTimeout(() => callback(Date.now()), 0),
+  cancelAnimationFrame: (handle: number) => clearTimeout(handle),
   HTMLDialogElement: dom.window.HTMLDialogElement,
   MutationObserver: dom.window.MutationObserver,
   IS_REACT_ACT_ENVIRONMENT: true,
 });
-dom.window.HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); };
-dom.window.HTMLDialogElement.prototype.close = function () { this.removeAttribute('open'); this.dispatchEvent(new dom.window.Event('close')); };
 
-const { render, screen, fireEvent, waitFor, cleanup } = await import('@testing-library/react');
+const { render, screen, fireEvent, waitFor, cleanup, act } = await import('@testing-library/react');
 const { default: StudyApp } = await import('../app/_study/study-app');
 
 const source = { id: 'doc-1', name: 'notes.txt', text: 'A database index helps queries find rows faster. '.repeat(5), createdAt: '2026-01-01T00:00:00Z' };
@@ -62,17 +66,18 @@ test('Next UI reopens a saved space and saves quiz and flashcard practice throug
   render(<StudyApp />);
   await screen.findByText(/What does an index help\?/);
   assert.equal(window.location.hash, '#space-1');
-  fireEvent.click(screen.getByRole('button', { name: 'Library' }));
-  assert.equal(document.querySelector('dialog')?.hasAttribute('open'), true);
+  fireEvent.click(screen.getByRole('button', { name: 'Toggle library' }));
+  assert.ok(document.querySelector('#library-sidebar'));
   fireEvent.click(screen.getByRole('button', { name: 'notes.txt' }));
-  assert.equal(document.querySelector('dialog')?.hasAttribute('open'), false);
-  fireEvent.click(screen.getByLabelText('Find rows'));
+  assert.equal(document.getElementById('library-toggle')?.getAttribute('aria-expanded'), 'false');
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 250)); });
+  fireEvent.click(screen.getByRole('radio', { name: 'Find rows' }));
   fireEvent.click(screen.getByRole('button', { name: 'Check answer' }));
   await screen.findByText('Correct answer: Find rows');
   assert.equal(space.runs[0].attempts.length, 1);
   fireEvent.click(screen.getByRole('button', { name: 'Flashcards' }));
   fireEvent.click(screen.getByText('Edit 1 cards and check sources'));
-  fireEvent.change(screen.getByLabelText('Answer'), { target: { value: 'A searchable index' } });
+  fireEvent.change(screen.getByRole('textbox', { name: 'Answer' }), { target: { value: 'A searchable index' } });
   fireEvent.click(screen.getByRole('button', { name: 'Save card' }));
   await screen.findByText('Saved');
   fireEvent.click(screen.getByRole('button', { name: 'Reveal answer' }));
@@ -105,4 +110,29 @@ test('a failed quiz generation keeps the saved flashcard deck and shows request 
   fireEvent.click(screen.getByRole('button', { name: 'Flashcards' }));
   await screen.findByRole('button', { name: 'Reveal answer' });
   cleanup();
+});
+
+test('desktop library stays beside the workspace and can be resized from the keyboard', async () => {
+  const previousMatchMedia = window.matchMedia;
+  window.matchMedia = query => ({ matches: query === '(min-width:900px)', media: query, onchange: null, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {}, dispatchEvent: () => false });
+  window.localStorage.clear();
+  const space = fixture(); mockApi(space);
+  try {
+    render(<StudyApp />);
+    await screen.findByText(/What does an index help\?/);
+    const resize = await screen.findByRole('separator', { name: 'Resize library' });
+    assert.equal(resize.getAttribute('aria-valuenow'), '300');
+    assert.equal(document.querySelector('.desktop-main')?.getAttribute('style'), '--library-width: 300px;');
+    fireEvent.keyDown(resize, { key: 'ArrowRight' });
+    assert.equal(resize.getAttribute('aria-valuenow'), '310');
+    assert.equal(window.localStorage.getItem('study-library-width'), '310');
+    fireEvent.click(screen.getByRole('button', { name: 'notes.txt' }));
+    assert.equal(screen.getByRole('button', { name: 'Toggle library' }).getAttribute('aria-expanded'), 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'Toggle library' }));
+    assert.equal(screen.getByRole('button', { name: 'Toggle library' }).getAttribute('aria-expanded'), 'false');
+  } finally {
+    cleanup();
+    window.matchMedia = previousMatchMedia;
+    window.localStorage.clear();
+  }
 });
