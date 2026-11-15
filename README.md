@@ -16,9 +16,9 @@ For the current implementation and a new-chat handoff, see [CONTEXT.md](CONTEXT.
 
 **Early checks.** Try the first flow with varied subjects and real study material. Save examples where a question is trivial, misleading, unsupported, or genuinely reveals a gap. Use those examples to create a small repeatable evaluation set. Observe whether someone finds a session useful enough to finish and return to; do not infer learning improvement from generated output alone.
 
-**Current boundaries.** The exact audience, feature set, AI approach, and infrastructure remain open. The browser uses Next.js and React; future backend and deployment choices remain open. The first version does not need every file format, a full progress dashboard, spaced repetition, or complex orchestration. Avoid confidential workplace material in testing and public demonstrations.
+**Current boundaries.** The exact audience, feature set, AI approach, and infrastructure remain open. Next.js serves the browser and API; storage and deployment choices remain open. The first version does not need every file format, a full progress dashboard, spaced repetition, or complex orchestration. Avoid confidential workplace material in testing and public demonstrations.
 
-**Next steps.** Build the first end-to-end session, test it with several passages, record failures and decisions, then choose the next capability from the evidence. Publish a working demo and a concise technical case study when the application is reliable enough to share.
+**Next steps.** Test the existing end-to-end study flow with several real passages, record failures and decisions, then choose the next capability from the evidence. Decide storage and access control before a public deployment. Publish a working demo and a concise technical case study when the application is reliable enough to share.
 
 ## Run a saved study space
 
@@ -30,7 +30,7 @@ Open **Library** in the header to choose a study space or document. The drawer c
 
 The app requires `OPENAI_API_KEY` in the ignored `.env` file and uses the OpenAI API for quiz overviews, questions, answer keys, and explanations. Restart `npm start` after changing the key. `OPENAI_MODEL` can override the default `gpt-4o-mini`. Keep the key on the server; never paste sensitive material into this prototype.
 
-The server saves uploaded document text and study history locally. It sends the selected document text to OpenAI when generating each quiz or flashcard deck. The model cites numbered source blocks, and the app derives displayed excerpts from the uploaded text. This ensures the excerpt exists, but does not prove the answer key, explanation, or flashcard answer is correct. This local prototype has no accounts or deletion UI; remove `data/spaces.json` to erase local study data.
+The Next.js API saves uploaded document text and study history locally. It sends the selected document text to OpenAI when generating each quiz or flashcard deck. The model cites numbered source blocks, and the app derives displayed excerpts from the uploaded text. This ensures the excerpt exists, but does not prove the answer key, explanation, or flashcard answer is correct. This local prototype has no accounts or deletion UI; remove `data/spaces.json` to erase local study data.
 
 Open **View API request** beside a generated quiz to inspect and copy the JSON body sent to OpenAI. The API key is sent in an authorization header and is never included in this view.
 The view also shows token usage reported by the API and an estimated USD cost at standard `gpt-4o-mini` rates. If a different model is configured, usage is shown without a cost estimate until its pricing is added.
