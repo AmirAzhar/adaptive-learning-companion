@@ -72,6 +72,9 @@ function Run({ run, space, readOnly, onAction }: { run: StudyRun; space: Space; 
   const nextId = quiz ? ids.find(id => !roundAttempts.some(attempt => attempt.questionId === id)) : undefined;
   const latestId = roundAttempts.at(-1)?.questionId;
   const source = space.documents.find(item => item.id === run.documentId);
+  const sourceIds = quiz?.documentIds ?? [];
+  const citedIds = new Set(quiz?.questions.map(question => question.documentId ?? run.documentId));
+  const uncovered = sourceIds.filter(id => !citedIds.has(id)).map(id => space.documents.find(document => document.id === id)?.name ?? 'Deleted source');
   const answered = quiz ? quiz.questions.filter(question => ids.includes(question.id) && roundAttempts.some(attempt => attempt.questionId === question.id && question.id !== latestId)) : [];
   const visible = quiz ? quiz.questions.filter(question => ids.includes(question.id) && (question.id === latestId || question.id === nextId)) : [];
   const complete = Boolean(quiz) && ids.every(id => roundAttempts.some(attempt => attempt.questionId === id));
@@ -86,6 +89,7 @@ function Run({ run, space, readOnly, onAction }: { run: StudyRun; space: Space; 
 
   return <Paper component="article" className="panel run" elevation={0}>
     <div className="run-header"><h3>{source?.name || `${quiz?.documentIds?.length ?? 0} documents`} · {new Date(run.createdAt).toLocaleString()}</h3><span className="run-badge">{run.type === 'quiz' ? `Quiz · round ${round}` : 'Open-ended · 3 questions'}</span></div>
+    {sourceIds.length > 1 && <p className="source-coverage">Questions cover {sourceIds.length - uncovered.length} of {sourceIds.length} selected sources.{uncovered.length > 0 && ` Not covered: ${uncovered.join(', ')}.`}</p>}
     <strong className="overview-label">Main ideas</strong><p className="run-overview">{run.overview}</p><RequestDetails result={run} />
     {quiz ? <>
       <p className="quiz-progress">{ids.filter(id => roundAttempts.some(attempt => attempt.questionId === id)).length} of {ids.length} questions answered in this round</p>

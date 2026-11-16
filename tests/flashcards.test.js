@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { server } from './server.js';
 
-const source = 'A database index stores selected column values in a searchable structure. It helps the database find matching rows without scanning the entire table. Inserts and updates take more work because the database also maintains the index. A query planner decides when using the index is cheaper than scanning the table.';
+const source = 'A database index stores selected column values in a searchable structure. It helps the database find matching rows without scanning the entire table. Inserts and updates take more work because the database also maintains the index. A query planner decides when using the index is cheaper than scanning the table.'.repeat(42);
 
 async function request(base, route, data) {
   const response = await fetch(`${base}${route}`, data === undefined ? {} : {
@@ -28,8 +28,10 @@ test('flashcard decks are independent, editable, reviewed locally, and saved', a
     const body = JSON.parse(options.body);
     assert.equal(body.text.format.name, 'study_flashcards');
     assert.equal(body.store, false);
-    const cards = Object.fromEntries([1, 2, 3, 4, 5].map((id) =>
-      [`card${id}`, { front: `Question ${id}?`, back: `Answer ${id}.`, sourceId: 1 }]));
+    const cards = { cards: body.instructions.includes('between one and 1 distinct')
+      ? [{ front: 'What does the other source discuss?', back: 'Database indexes.', sourceId: 1 }]
+      : Array.from({ length: 20 }, (_, index) =>
+        ({ front: `Question ${index + 1}?`, back: `Answer ${index + 1}.`, sourceId: 1 })) };
     return new Response(JSON.stringify({ status: 'completed', model: 'gpt-4o-mini',
       usage: { input_tokens: 100, output_tokens: 50, total_tokens: 150 },
       output: [{ content: [{ type: 'output_text', text: JSON.stringify(cards) }] }] }), { status: 200 });
@@ -40,10 +42,12 @@ test('flashcard decks are independent, editable, reviewed locally, and saved', a
   try {
     let base = await start();
     const spaceId = (await request(base, '/api/spaces', { title: 'Cards' })).body.space.id;
-    const documentId = (await request(base, `/api/spaces/${spaceId}/documents`, { name: 'notes.txt', text: source })).body.document.id;
-    const generated = await request(base, `/api/spaces/${spaceId}/decks`, { documentId });
+    await request(base, `/api/spaces/${spaceId}/documents`, { name: 'notes.txt', text: source });
+    await request(base, `/api/spaces/${spaceId}/documents`, { name: 'more-notes.txt', text: source });
+    const generated = await request(base, `/api/spaces/${spaceId}/decks`, {});
     assert.equal(generated.status, 200);
-    assert.equal(generated.body.cards.length, 5);
+    assert.equal(generated.body.cards.length, 20);
+    assert.equal(new Set(generated.body.cards.map(card => card.documentId)).size, 2);
     assert.ok(generated.body.cards[0].sourceQuote.includes('database index'));
     assert.ok(!JSON.stringify(generated.body).includes('test-key'));
     const deckId = generated.body.id;
@@ -54,25 +58,25 @@ test('flashcard decks are independent, editable, reviewed locally, and saved', a
     assert.equal((await request(base, ratingRoute(1), { rating: 'again' })).status, 200);
     assert.equal((await request(base, ratingRoute(1), { rating: 'good' })).status, 400);
     assert.equal((await request(base, `/api/spaces/${spaceId}/decks/${deckId}/review`, { scope: 'again' })).status, 400);
-    for (let id = 2; id <= 5; id++) assert.equal((await request(base, ratingRoute(id), { rating: 'good' })).status, 200);
+    for (let id = 2; id <= 20; id++) assert.equal((await request(base, ratingRoute(id), { rating: 'good' })).status, 200);
     const retry = await request(base, `/api/spaces/${spaceId}/decks/${deckId}/review`, { scope: 'again' });
     assert.equal(retry.status, 200);
     assert.deepEqual(retry.body.cardIds, [1]);
     assert.equal((await request(base, ratingRoute(2), { rating: 'good' })).status, 400);
-    assert.equal(modelCalls, 1);
+    assert.equal(modelCalls, 2);
     await stop();
     base = await start();
     const reopened = (await request(base, `/api/spaces/${spaceId}`)).body.space;
     assert.equal(reopened.decks[0].id, deckId);
     assert.equal(reopened.decks[0].cards[0].front, 'What does an index do?');
-    assert.equal(reopened.decks[0].reviews.length, 5);
+    assert.equal(reopened.decks[0].reviews.length, 20);
     assert.equal(reopened.decks[0].currentRound, 2);
     assert.equal((await request(base, ratingRoute(1), { rating: 'good' })).status, 200);
-    const another = await request(base, `/api/spaces/${spaceId}/decks`, { documentId });
+    const another = await request(base, `/api/spaces/${spaceId}/decks`, {});
     assert.equal(another.status, 200);
     assert.notEqual(another.body.id, deckId);
     assert.equal((await request(base, '/api/spaces')).body.spaces[0].deckCount, 2);
-    assert.equal(modelCalls, 2);
+    assert.equal(modelCalls, 4);
   } finally {
     if (listening) await stop();
     globalThis.fetch = originalFetch;

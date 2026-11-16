@@ -2,6 +2,11 @@
 
 import { useState } from 'react';
 import Button from '@mui/material/Button';
+import Alert from '@mui/material/Alert';
+import Dialog from '@mui/material/Dialog';
+import DialogActions from '@mui/material/DialogActions';
+import DialogContent from '@mui/material/DialogContent';
+import DialogTitle from '@mui/material/DialogTitle';
 import IconButton from '@mui/material/IconButton';
 import CloseIcon from '@mui/icons-material/Close';
 import Paper from '@mui/material/Paper';
@@ -42,14 +47,23 @@ export function SpacesLibrary({ spaces, onSpace, onCreateSpace, onRename, onArch
   </section>;
 }
 
-type SourcesProps = { space: Space; readOnly?: boolean; onAddDocument: (file: File) => Promise<void>; onClose: () => void };
+type SourcesProps = { space: Space; readOnly?: boolean; onAddDocument: (file: File) => Promise<void>;
+  onChangeDocument: (id: string, change: 'remove' | 'restore' | 'delete') => Promise<void>; onClose: () => void };
 
-export function SourcesPanel({ space, readOnly, onAddDocument, onClose }: SourcesProps) {
+export function SourcesPanel({ space, readOnly, onAddDocument, onChangeDocument, onClose }: SourcesProps) {
   const [query, setQuery] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [adding, setAdding] = useState(false);
-  const shown = space.documents.filter(item => item.name.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
+  const [showRemoved, setShowRemoved] = useState(false);
+  const [deleting, setDeleting] = useState<StudyDocument | null>(null);
+  const active = space.documents.filter(item => !item.removedAt);
+  const removed = space.documents.filter(item => item.removedAt);
+  const shown = active.filter(item => item.name.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
+  const characters = active.reduce((total, document) => total + document.text.length, 0);
+  const tooManyCharacters = characters > 40000;
+  const affectedRuns = deleting ? space.runs.filter(run => run.documentId === deleting.id || ('documentIds' in run && run.documentIds?.includes(deleting.id))).length : 0;
+  const affectedDecks = deleting ? (space.decks ?? []).filter(deck => deck.documentId === deleting.id || deck.documentIds?.includes(deleting.id)).length : 0;
   async function add(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!file) return;
@@ -59,13 +73,30 @@ export function SourcesPanel({ space, readOnly, onAddDocument, onClose }: Source
     catch { /* The parent displays the error. */ }
     finally { setBusy(false); }
   }
+  async function change(documentId: string, action: 'remove' | 'restore' | 'delete') {
+    setBusy(true);
+    try { await onChangeDocument(documentId, action); if (action === 'delete') setDeleting(null); }
+    catch { /* The parent displays the error. */ }
+    finally { setBusy(false); }
+  }
   return <section id="sources-panel" className="sources-panel" aria-labelledby="sources-title">
     <div className="sources-heading"><h2 id="sources-title">Sources</h2><IconButton aria-label="Close sources" onClick={onClose}><CloseIcon /></IconButton></div>
     <p className="sources-description">Documents used when generating new quizzes and flashcards.</p>
+    <p className="sources-usage">{active.length} active {active.length === 1 ? 'document' : 'documents'} · {characters.toLocaleString()} / 40,000 characters</p>
+    {active.length > 3 && !tooManyCharacters && <p className="sources-coverage">A short quiz or deck may not cover every document.</p>}
+    {tooManyCharacters && <Alert severity="error" className="sources-limit" role="alert">All active sources exceed the 40,000-character limit. {readOnly ? 'Restore this space before generating again.' : 'Choose a smaller set for generation or remove a source.'}</Alert>}
     {!readOnly && <Button className="sources-add" variant="outlined" onClick={() => setAdding(!adding)} aria-expanded={adding} aria-controls="add-document-form">{adding ? 'Cancel' : 'Add document'}</Button>}
     {adding && <form id="add-document-form" onSubmit={add} className="library-create-form"><div className="file-field"><label htmlFor="document-file">.txt or .md, 120–20,000 characters</label><input id="document-file" type="file" accept=".txt,.md,text/plain,text/markdown" required onChange={event => setFile(event.target.files?.[0] ?? null)} /></div><Button type="submit" variant="contained" disabled={!file || busy}>Save document</Button></form>}
-    {space.documents.length > 1 && <TextField label="Find a document" size="small" value={query} onChange={event => setQuery(event.target.value)} />}
-    <div className="library-list">{shown.map(document => <Paper key={document.id} variant="outlined" className="source-row"><span className="library-row-title">{document.name}</span><span className="library-row-meta">{document.text.length.toLocaleString()} characters</span></Paper>)}
-      {!shown.length && <p className="library-empty">{space.documents.length ? 'No documents match your search.' : 'Add a document to begin studying.'}</p>}</div>
+    {active.length > 1 && <TextField label="Find a document" size="small" value={query} onChange={event => setQuery(event.target.value)} />}
+    <div className="library-list">{shown.map(document => <Paper key={document.id} variant="outlined" className="source-row"><span className="source-row-details"><span className="library-row-title">{document.name}</span><span className="library-row-meta">{document.text.length.toLocaleString()} characters</span></span>{!readOnly && <Button size="small" onClick={() => change(document.id, 'remove')} disabled={busy}>Remove</Button>}</Paper>)}
+      {!shown.length && <p className="library-empty">{active.length ? 'No documents match your search.' : 'Add a document to generate new study material.'}</p>}</div>
+    {removed.length > 0 && <div className="removed-sources"><Button variant="text" aria-expanded={showRemoved} onClick={() => setShowRemoved(!showRemoved)}>{showRemoved ? 'Hide' : 'Show'} removed sources ({removed.length})</Button>
+      {showRemoved && <><p className="sources-description">Kept for existing quizzes and flashcards. Restore to use in new generation.</p><div className="library-list">{removed.map(document => <Paper key={document.id} variant="outlined" className="source-row"><span className="source-row-details"><span className="library-row-title">{document.name}</span><span className="library-row-meta">{document.text.length.toLocaleString()} characters</span></span>{!readOnly && <div className="source-row-actions"><Button size="small" onClick={() => change(document.id, 'restore')} disabled={busy}>Restore</Button><Button size="small" color="error" onClick={() => setDeleting(document)} disabled={busy}>Delete</Button></div>}</Paper>)}</div></>}
+    </div>}
+    <Dialog open={Boolean(deleting)} onClose={busy ? undefined : () => setDeleting(null)} aria-labelledby="delete-source-title">
+      <DialogTitle id="delete-source-title">Permanently delete {deleting?.name}?</DialogTitle>
+      <DialogContent><p>The source text will be erased.{affectedRuns || affectedDecks ? ` This also deletes ${affectedRuns} ${affectedRuns === 1 ? 'quiz' : 'quizzes'} and ${affectedDecks} ${affectedDecks === 1 ? 'deck' : 'decks'} made from it.` : ''}</p></DialogContent>
+      <DialogActions><Button onClick={() => setDeleting(null)} disabled={busy}>Cancel</Button><Button color="error" variant="contained" onClick={() => deleting && change(deleting.id, 'delete')} disabled={busy}>Delete permanently</Button></DialogActions>
+    </Dialog>
   </section>;
 }

@@ -27,7 +27,7 @@ const { default: StudyApp } = await import('../app/_study/study-app');
 const source = { id: 'doc-1', name: 'notes.txt', text: 'A database index helps queries find rows faster. '.repeat(5), createdAt: '2026-01-01T00:00:00Z' };
 function fixture(): Space {
   return {
-    id: 'space-1', title: 'Databases', documents: [source],
+    id: 'space-1', title: 'Databases', documents: [{ ...source }],
     runs: [{ id: 'run-1', documentId: source.id, type: 'quiz', createdAt: '2026-01-01T00:00:00Z', overview: 'Indexes help reads.',
       questions: [{ id: 1, text: 'What does an index help?', options: ['Find rows', 'Remove rows', 'Write files', 'Delete data'], correctIndex: 0, explanation: 'It helps find rows.', sourceQuote: 'A database index helps queries find rows faster.' }],
       attempts: [], currentRound: 1, practiceQuestionIds: [1] }],
@@ -42,6 +42,18 @@ function mockApi(space: Space) {
     const path = String(input);
     if (path === '/api/spaces' && !init?.method) return respond({ spaces: [{ id: space.id, title: space.title, documentCount: space.documents.length, runCount: space.runs.length, deckCount: space.decks?.length ?? 0, archivedAt: space.archivedAt ?? null }] });
     if (path === `/api/spaces/${space.id}` && !init?.method) return respond({ space: structuredClone(space) });
+    if (path.startsWith(`/api/spaces/${space.id}/documents/`) && init?.method === 'PATCH') {
+      const target = space.documents.find(item => item.id === path.split('/').at(-1))!;
+      target.removedAt = JSON.parse(String(init.body)).removed ? new Date().toISOString() : null;
+      return respond({ document: target });
+    }
+    if (path.startsWith(`/api/spaces/${space.id}/documents/`) && init?.method === 'DELETE') {
+      const id = path.split('/').at(-1);
+      space.documents = space.documents.filter(item => item.id !== id);
+      space.runs = space.runs.filter(run => run.documentId !== id);
+      space.decks = space.decks!.filter(deck => deck.documentId !== id);
+      return respond({ deleted: true });
+    }
     if (path.endsWith('/answers')) {
       const body = JSON.parse(String(init?.body));
       (space.runs[0] as QuizRun).attempts.push({ questionId: body.questionId, optionIndex: body.optionIndex, correct: body.optionIndex === 0, round: 1 });
@@ -139,6 +151,83 @@ test('sources are optional within the space workspace', async () => {
     assert.equal(screen.queryByText(/A database index helps queries find rows faster\./), null);
     assert.equal(window.location.hash, '#space-1');
     assert.ok(screen.getByRole('button', { name: 'Close sources' }));
+  } finally {
+    cleanup();
+    window.history.replaceState(null, '', '/');
+  }
+});
+
+test('removing a source clears the limit without losing saved material; permanent deletion confirms its impact', async () => {
+  const space = fixture();
+  space.documents[0].text += 'x'.repeat(8000);
+  for (let index = 2; index <= 7; index++) space.documents.push({ id: `doc-${index}`, name: `source-${index}.txt`, text: 'x'.repeat(5500), createdAt: '2026-01-01T00:00:00Z' });
+  mockApi(space);
+  try {
+    render(<StudyApp />);
+    fireEvent.click(await screen.findByRole('button', { name: /^Databases.*documents$/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Sources (7)' }));
+    assert.ok(await screen.findByText(/All active sources exceed the 40,000-character limit/));
+    const row = screen.getByText('notes.txt').closest('.source-row')!;
+    fireEvent.click(row.querySelector('button')!);
+    await waitFor(() => assert.equal(space.documents[0].removedAt != null, true));
+    await waitFor(() => assert.equal(screen.queryByText(/All active sources exceed the 40,000-character limit/), null));
+    assert.equal(space.runs.length, 1);
+    assert.equal(space.decks!.length, 1);
+    fireEvent.click(screen.getByRole('button', { name: 'Show removed sources (1)' }));
+    const removedRow = screen.getByText('notes.txt').closest('.source-row')!;
+    fireEvent.click(removedRow.querySelector('button:last-child')!);
+    assert.ok(await screen.findByText(/This also deletes 1 quiz and 1 deck/));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete permanently' }));
+    await waitFor(() => assert.equal(space.documents.some(item => item.id === 'doc-1'), false));
+    assert.equal(space.runs.length, 0);
+    assert.equal(space.decks!.length, 0);
+  } finally {
+    cleanup();
+    window.history.replaceState(null, '', '/');
+  }
+});
+
+test('more than six documents can generate when total characters stay within the limit', async () => {
+  const space = fixture(); mockApi(space);
+  for (let index = 2; index <= 7; index++) space.documents.push({ id: `doc-${index}`, name: `source-${index}.txt`, text: 'A useful source sentence. '.repeat(5), createdAt: '2026-01-01T00:00:00Z' });
+  try {
+    render(<StudyApp />);
+    fireEvent.click(await screen.findByRole('button', { name: /^Databases.*documents$/ }));
+    assert.equal((await screen.findByRole('button', { name: 'Generate quiz' })).hasAttribute('disabled'), false);
+    fireEvent.click(screen.getByRole('button', { name: 'Sources (7)' }));
+    assert.ok(await screen.findByText(/7 active documents/));
+    assert.equal(screen.queryByRole('alert'), null);
+  } finally {
+    cleanup();
+    window.history.replaceState(null, '', '/');
+  }
+});
+
+test('learners can focus generation on selected sources and see saved coverage', async () => {
+  const space = fixture();
+  space.documents.push({ id: 'doc-2', name: 'transactions.txt', text: 'A transaction groups related changes. '.repeat(5), createdAt: '2026-01-02T00:00:00Z' });
+  const run = space.runs[0] as QuizRun;
+  space.runs = [{ ...run, documentId: undefined, documentIds: ['doc-1', 'doc-2'],
+    questions: [{ ...run.questions[0], documentId: 'doc-1' }] }];
+  mockApi(space);
+  const originalFetch = globalThis.fetch;
+  const generationBodies: unknown[] = [];
+  globalThis.fetch = async (input, init) => {
+    if (String(input).endsWith('/runs') && init?.method === 'POST') {
+      generationBodies.push(JSON.parse(String(init.body)));
+      return respond({ saved: true });
+    }
+    return originalFetch(input, init);
+  };
+  try {
+    render(<StudyApp />);
+    fireEvent.click(await screen.findByRole('button', { name: /^Databases.*documents$/ }));
+    assert.ok(await screen.findByText(/Questions cover 1 of 2 selected sources.*Not covered: transactions.txt/));
+    fireEvent.click(screen.getByRole('button', { name: /Choose sources/ }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'notes.txt' }));
+    assert.equal((screen.getByRole('checkbox', { name: 'notes.txt' }) as HTMLInputElement).checked, false);
+    fireEvent.click(screen.getByRole('button', { name: 'New quiz' }));
+    await waitFor(() => assert.deepEqual(generationBodies, [{ documentIds: ['doc-2'] }]));
   } finally {
     cleanup();
     window.history.replaceState(null, '', '/');

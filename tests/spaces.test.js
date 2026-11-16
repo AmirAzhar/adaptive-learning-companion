@@ -30,13 +30,13 @@ test('a study space keeps documents, quizzes, and locally graded answers after a
     assert.equal(requestBody.store, false);
     assert.ok(requestBody.input.includes(source.slice(0, 50)));
     assert.equal(requestBody.text.format.name, 'study_quiz');
-    assert.deepEqual(requestBody.text.format.schema.required, ['overview', 'question1', 'question2', 'question3']);
-    assert.ok(requestBody.text.format.schema.properties.question1.properties.sourceId.enum.includes(3));
+    assert.deepEqual(requestBody.text.format.schema.required, ['overview', 'questions']);
+    assert.ok(requestBody.text.format.schema.properties.questions.items.properties.sourceId.enum.includes(3));
     const question = (id) => ({ text: `What does index idea ${id} mean?`,
       optionA: 'Faster reads', optionB: 'Faster writes', optionC: 'No storage', optionD: 'No planner',
       correctOption: 'A', explanation: 'An index can help find matching rows.', sourceId: id });
     const output = { overview: 'Indexes speed up some reads but add write overhead.',
-      question1: question(1), question2: question(2), question3: question(3) };
+      questions: [question(1), question(2), question(3)] };
     return new Response(JSON.stringify({ status: 'completed', model: 'gpt-4o-mini',
       usage: { input_tokens: 100, output_tokens: 50, total_tokens: 150 },
       output: [{ content: [{ type: 'output_text', text: JSON.stringify(output) }] }] }), { status: 200 });

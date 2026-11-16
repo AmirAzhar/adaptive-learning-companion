@@ -32,8 +32,8 @@ test('space generation snapshots all documents and cites each source document', 
     const question = (id) => ({ text: `Question ${id}`, optionA: 'Yes', optionB: 'No', optionC: 'Maybe', optionD: 'Unknown', correctOption: 'A', explanation: 'Supported by the source.', sourceId: id });
     const card = (id) => ({ front: `Card ${id}`, back: 'Supported by the source.', sourceId: id === 1 ? 1 : 2 });
     const output = input.text.format.name === 'study_quiz'
-      ? { overview: 'Indexes and transactions support database work.', question1: question(1), question2: question(2), question3: question(2) }
-      : { card1: card(1), card2: card(2), card3: card(3), card4: card(4), card5: card(5) };
+      ? { overview: 'Indexes and transactions support database work.', questions: [question(1), question(2), question(2)].map((item, index) => ({ ...item, text: `Question ${index + 1}` })) }
+      : { cards: [card(1), card(2), card(3), card(4), card(5)] };
     return new Response(JSON.stringify({ status: 'completed', output: [{ content: [{ type: 'output_text', text: JSON.stringify(output) }] }] }), { status: 200 });
   };
   await new Promise((resolve) => server.listen(0, resolve));
@@ -42,6 +42,9 @@ test('space generation snapshots all documents and cites each source document', 
     const spaceId = (await request(base, '/api/spaces', { title: 'Databases' })).body.space.id;
     const firstId = (await request(base, `/api/spaces/${spaceId}/documents`, { name: 'indexes.md', text: first })).body.document.id;
     const secondId = (await request(base, `/api/spaces/${spaceId}/documents`, { name: 'transactions.md', text: second })).body.document.id;
+    for (let index = 3; index <= 7; index++) {
+      assert.equal((await request(base, `/api/spaces/${spaceId}/documents`, { name: `source-${index}.md`, text: first.repeat(12) })).status, 201);
+    }
     const quiz = await request(base, `/api/spaces/${spaceId}/runs`, {});
     const deck = await request(base, `/api/spaces/${spaceId}/decks`, {});
     assert.equal(quiz.status, 200);
@@ -51,10 +54,34 @@ test('space generation snapshots all documents and cites each source document', 
     const added = await request(base, `/api/spaces/${spaceId}/documents`, { name: 'third.md', text: first });
     assert.equal(added.status, 201);
     const saved = (await request(base, `/api/spaces/${spaceId}`)).body.space;
-    assert.deepEqual(saved.runs[0].documentIds, [firstId, secondId]);
-    assert.deepEqual(saved.decks[0].documentIds, [firstId, secondId]);
+    assert.equal(saved.runs[0].documentIds.length, 7);
+    assert.deepEqual(saved.runs[0].documentIds.slice(0, 2), [firstId, secondId]);
+    assert.equal(saved.decks[0].documentIds.length, 7);
+    assert.deepEqual(saved.decks[0].documentIds.slice(0, 2), [firstId, secondId]);
     assert.equal(saved.runs[0].documentId, undefined);
-    assert.equal(calls, 2);
+    assert.equal(calls, 3);
+    const removed = await originalFetch(`${base}/api/spaces/${spaceId}/documents/${firstId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ removed: true }),
+    });
+    assert.equal(removed.status, 200);
+    let after = (await request(base, `/api/spaces/${spaceId}`)).body.space;
+    assert.equal(after.documents.find((document) => document.id === firstId).removedAt !== null, true);
+    assert.equal(after.runs.length, 1);
+    assert.equal(after.decks.length, 1);
+    assert.equal((await request(base, '/api/spaces')).body.spaces[0].documentCount, 7);
+    assert.equal((await request(base, `/api/spaces/${spaceId}/runs`, { documentId: firstId })).status, 400);
+    assert.equal(calls, 3);
+    const restored = await originalFetch(`${base}/api/spaces/${spaceId}/documents/${firstId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ removed: false }),
+    });
+    assert.equal(restored.status, 200);
+    assert.equal((await request(base, '/api/spaces')).body.spaces[0].documentCount, 8);
+    const deleted = await originalFetch(`${base}/api/spaces/${spaceId}/documents/${firstId}`, { method: 'DELETE' });
+    assert.deepEqual(await deleted.json(), { deleted: true, removedRuns: 1, removedDecks: 1 });
+    after = (await request(base, `/api/spaces/${spaceId}`)).body.space;
+    assert.equal(after.documents.some((document) => document.id === firstId), false);
+    assert.equal(after.runs.length, 0);
+    assert.equal(after.decks.length, 0);
   } finally {
     await new Promise((resolve) => server.close(resolve));
     globalThis.fetch = originalFetch;

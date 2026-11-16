@@ -1,5 +1,6 @@
 export type RequestInfo = {
   apiRequest?: unknown;
+  apiCalls?: RequestInfo[];
   usage?: { input_tokens: number; output_tokens: number; total_tokens: number; input_tokens_details?: { cached_tokens?: number } };
   estimatedCostUsd?: number | null;
 };
@@ -7,7 +8,7 @@ export type RequestInfo = {
 export type AppError = Error & { details?: RequestInfo };
 export type Notice = { text: string; details?: RequestInfo };
 export type SpaceSummary = { id: string; title: string; documentCount: number; runCount?: number; deckCount?: number; archivedAt?: string | null };
-export type StudyDocument = { id: string; name: string; text: string; createdAt: string };
+export type StudyDocument = { id: string; name: string; text: string; createdAt: string; removedAt?: string | null };
 export type QuizQuestion = { id: number; text: string; options: string[]; correctIndex: number; explanation: string; sourceQuote: string; documentId?: string | null };
 export type LegacyQuestion = { id: number; text: string };
 export type QuizAttempt = { questionId: number; optionIndex: number; correct: boolean; round?: number };

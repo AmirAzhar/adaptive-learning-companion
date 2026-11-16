@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { checkQuiz, checkFeedback, generationDocuments } from '../study.js';
+import { checkQuiz, checkFeedback, coveragePlan, generationDocuments, generationTargets, mergeCoverage } from '../study.js';
 import { generateQuiz, gradeAnswer } from '../model.js';
 import { findSpace, readSpaces, updateSpaces } from '../store.js';
 import { body, json, modelResult } from '../http.js';
@@ -26,6 +26,21 @@ export async function handleQuizzes(request) {
     const source = input.documentId ? documents[0].text : documents;
     const generated = await generateQuiz(source);
     return await modelResult(generated, (output) => checkQuiz(source, output), async (result) => {
+      const target = generationTargets(source).questions;
+      const { kept, missing } = coveragePlan(documents, result.questions, target);
+      if (missing.length) {
+        try {
+          const extra = await generateQuiz(missing, { target: missing.length });
+          result.apiCalls = [
+            { apiRequest: result.apiRequest, usage: result.usage, estimatedCostUsd: result.estimatedCostUsd },
+            { apiRequest: extra.requestBody, usage: extra.usage, estimatedCostUsd: extra.estimatedCostUsd },
+          ];
+          const checked = checkQuiz(missing, extra.output, missing.length);
+          const merged = mergeCoverage(kept, checked.questions, 'text', target);
+          if (new Set(merged.map((item) => item.documentId)).size > new Set(result.questions.map((item) => item.documentId)).size)
+            result.questions = merged;
+        } catch { /* Keep the valid first result and show its actual source coverage. */ }
+      }
       const run = { id: randomUUID(), ...(input.documentId ? { documentId: input.documentId } : { documentIds: documents.map((document) => document.id) }), type: 'quiz',
         createdAt: new Date().toISOString(), ...result, attempts: [], currentRound: 1,
         practiceQuestionIds: result.questions.map((question) => question.id) };

@@ -6,11 +6,50 @@ export function checkSource(source) {
 }
 
 export function generationDocuments(space, input) {
-  const documents = input.documentId ? space.documents.filter((item) => item.id === input.documentId) : [...space.documents];
+  if (input.documentId && input.documentIds) throw new Error('Choose one source selection.');
+  if (input.documentIds && (!Array.isArray(input.documentIds) || !input.documentIds.length ||
+    input.documentIds.some((id) => typeof id !== 'string') || new Set(input.documentIds).size !== input.documentIds.length))
+    throw new Error('Choose at least one distinct source document.');
+  const documents = space.documents.filter((item) => !item.removedAt &&
+    (input.documentId ? item.id === input.documentId : input.documentIds ? input.documentIds.includes(item.id) : true));
   if (!documents.length) throw new Error(input.documentId ? 'Document not found.' : 'Add a document before generating study material.');
-  if (documents.length > 6 || documents.reduce((total, document) => total + document.text.length, 0) > 40000)
-    throw new Error('A study space can use up to 6 documents and 40,000 characters for generation.');
+  if (input.documentIds && documents.length !== input.documentIds.length) throw new Error('One or more selected documents were not found.');
+  if (documents.reduce((total, document) => total + document.text.length, 0) > 40000)
+    throw new Error('A study space can use up to 40,000 characters for generation.');
   return documents;
+}
+
+export function generationTargets(source) {
+  const characters = typeof source === 'string' ? source.length : source.reduce((total, document) => total + document.text.length, 0);
+  return { questions: Math.min(10, Math.max(1, Math.ceil(characters / 2500))),
+    cards: Math.min(20, Math.max(1, Math.ceil(characters / 1250))) };
+}
+
+export function coveragePlan(documents, items, target) {
+  if (documents.length < 2 || documents.length > target) return { kept: items, missing: [] };
+  const covered = new Set(items.map((item) => item.documentId));
+  const missing = documents.filter((document) => !covered.has(document.id));
+  const kept = [...items];
+  while (target - kept.length < missing.length) {
+    const counts = new Map(documents.map((document) =>
+      [document.id, kept.filter((item) => item.documentId === document.id).length]));
+    const index = kept.findLastIndex((item) => counts.get(item.documentId) > 1);
+    if (index < 0) break;
+    kept.splice(index, 1);
+  }
+  return { kept, missing: missing.slice(0, target - kept.length) };
+}
+
+export function mergeCoverage(kept, added, field, target) {
+  const seen = new Set(kept.map((item) => item[field].toLowerCase()));
+  const combined = [...kept];
+  for (const item of added) {
+    const key = item[field].toLowerCase();
+    if (combined.length === target || seen.has(key)) continue;
+    combined.push(item);
+    seen.add(key);
+  }
+  return combined.map((item, index) => ({ ...item, id: index + 1 }));
 }
 
 export function checkQuote(source, quote) {
@@ -65,15 +104,15 @@ export function checkSession(source, result) {
   };
 }
 
-export function checkQuiz(source, result) {
+export function checkQuiz(source, result, maxQuestions = generationTargets(source).questions) {
   if (typeof result?.overview !== 'string' || !result.overview.trim()) {
     throw new Error('The quiz response was incomplete. Please retry.');
   }
   const chunks = typeof source === 'string' ? sourceChunks(source) : sourceBlocks(source);
-  return {
-    overview: result.overview.trim(),
-    questions: ['question1', 'question2', 'question3'].map((key, index) => {
-      const question = result[key];
+  const questions = result.questions;
+  if (!Array.isArray(questions) || questions.length < 1 || questions.length > maxQuestions)
+    throw new Error('The quiz had an invalid number of questions. Please retry.');
+  const checked = questions.map((question, index) => {
       const options = ['optionA', 'optionB', 'optionC', 'optionD'].map((name) => question?.[name]);
       if (typeof question?.text !== 'string' || !question.text.trim() ||
           options.some((option) => typeof option !== 'string' || !option.trim()) ||
@@ -86,14 +125,17 @@ export function checkQuiz(source, result) {
       return { id: index + 1, text: question.text.trim(), options: options.map((option) => option.trim()),
         correctIndex: 'ABCD'.indexOf(question.correctOption), explanation: question.explanation.trim(),
         ...citedSource(source, question.sourceId) };
-    }),
-  };
+    });
+  if (new Set(checked.map((question) => question.text.toLowerCase())).size !== checked.length)
+    throw new Error('The quiz contained duplicate questions. Please retry.');
+  return { overview: result.overview.trim(), questions: checked };
 }
 
-export function checkFlashcards(source, result) {
+export function checkFlashcards(source, result, maxCards = generationTargets(source).cards) {
   const chunks = typeof source === 'string' ? sourceChunks(source) : sourceBlocks(source);
-  const cards = ['card1', 'card2', 'card3', 'card4', 'card5'].map((key, index) => {
-    const card = result?.[key];
+  if (!Array.isArray(result?.cards) || result.cards.length < 1 || result.cards.length > maxCards)
+    throw new Error('The deck had an invalid number of cards. Please retry.');
+  const cards = result.cards.map((card, index) => {
     if (typeof card?.front !== 'string' || !card.front.trim() || card.front.length > 500 ||
         typeof card.back !== 'string' || !card.back.trim() || card.back.length > 2000 ||
         !Number.isInteger(card.sourceId) || card.sourceId < 1 || card.sourceId > chunks.length) {

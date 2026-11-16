@@ -54,6 +54,9 @@ function ReviewCard({ deck, card, spaceId, sourceName, readOnly, onAction }: { d
 function DeckView({ deck, space, readOnly, onAction }: { deck: Deck; space: Space; readOnly?: boolean; onAction: Action }) {
   const [busy, setBusy] = useState(false);
   const source = space.documents.find(item => item.id === deck.documentId);
+  const sourceIds = deck.documentIds ?? [];
+  const citedIds = new Set(deck.cards.map(card => card.documentId ?? deck.documentId));
+  const uncovered = sourceIds.filter(id => !citedIds.has(id)).map(id => space.documents.find(document => document.id === id)?.name ?? 'Deleted source');
   const roundReviews = deck.reviews.filter(review => review.round === deck.currentRound);
   const nextId = deck.reviewCardIds.find(id => !roundReviews.some(review => review.cardId === id));
   const card = deck.cards.find(item => item.id === nextId);
@@ -66,6 +69,7 @@ function DeckView({ deck, space, readOnly, onAction }: { deck: Deck; space: Spac
   }
   return <Paper component="article" className="panel run" elevation={0}>
     <h3>{source?.name || `${deck.documentIds?.length ?? 0} documents`} · {new Date(deck.createdAt).toLocaleString()}</h3>
+    {sourceIds.length > 1 && <p className="source-coverage">Cards cover {sourceIds.length - uncovered.length} of {sourceIds.length} selected sources.{uncovered.length > 0 && ` Not covered: ${uncovered.join(', ')}.`}</p>}
     <RequestDetails result={deck} />
     <Accordion className="card-editor" disableGutters elevation={0}><AccordionSummary expandIcon={<ExpandMoreIcon />}>{readOnly ? 'View' : 'Edit'} {deck.cards.length} cards and check sources</AccordionSummary><AccordionDetails>
       {deck.cards.map(card => <CardEdit key={card.id} card={card} deck={deck} spaceId={space.id} sourceName={space.documents.find(item => item.id === (card.documentId ?? deck.documentId))?.name} readOnly={readOnly} onAction={onAction} />)}

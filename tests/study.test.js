@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { server } from './server.js';
-import { checkSession, checkQuiz, sourceChunks } from '../app/api/_server/study.js';
+import { checkSession, checkQuiz, checkFlashcards, generationTargets, sourceChunks } from '../app/api/_server/study.js';
 import { estimateCost } from '../app/api/_server/model.js';
 
 const passages = [
@@ -91,12 +91,22 @@ test('quiz validation checks answer options and source block IDs', () => {
   const question = { text: 'Which is true?', optionA: 'One', optionB: 'Two',
     optionC: 'Three', optionD: 'Four', correctOption: 'A',
     explanation: 'The source supports one.', sourceId: 1 };
-  const valid = { overview: 'Overview', question1: question, question2: question, question3: question };
-  assert.equal(checkQuiz(passages[0], valid).questions.length, 3);
+  const valid = { overview: 'Overview', questions: [question] };
+  assert.equal(checkQuiz(passages[0], valid).questions.length, 1);
   assert.ok(passages[0].replace(/\s+/g, ' ').includes(checkQuiz(passages[0], valid).questions[0].sourceQuote));
-  assert.throws(() => checkQuiz(passages[0], { ...valid, question1: { ...question,
-    optionB: 'one' } }), /quiz question/);
-  assert.throws(() => checkQuiz(passages[0], { ...valid, question1: { ...question,
-    sourceId: 99 } }), /quiz question/);
+  assert.throws(() => checkQuiz(passages[0], { ...valid, questions: [{ ...question,
+    optionB: 'one' }] }), /quiz question/);
+  assert.throws(() => checkQuiz(passages[0], { ...valid, questions: [{ ...question,
+    sourceId: 99 }] }), /quiz question/);
+  assert.throws(() => checkQuiz(passages[0], { ...valid, questions: [question, question] }), /invalid number/);
+  assert.deepEqual(generationTargets(passages[0]), { questions: 1, cards: 1 });
+  assert.deepEqual(generationTargets('x'.repeat(40000)), { questions: 10, cards: 20 });
+  const longSource = passages[0].repeat(100);
+  const tenQuestions = Array.from({ length: 10 }, (_, index) => ({ ...question, text: `Question ${index + 1}?` }));
+  assert.equal(checkQuiz(longSource, { overview: 'Overview', questions: tenQuestions }).questions.length, 10);
+  assert.throws(() => checkQuiz(longSource, { overview: 'Overview', questions: [...tenQuestions, question] }), /invalid number/);
+  assert.throws(() => checkQuiz(longSource, { overview: 'Overview', questions: [question, question] }), /duplicate/);
+  assert.equal(checkFlashcards(passages[0], { cards: [{ front: 'What happens?', back: 'Evaporation.', sourceId: 1 }] }).cards.length, 1);
+  assert.throws(() => checkFlashcards(passages[0], { cards: [] }), /invalid number/);
   assert.equal(sourceChunks('a'.repeat(430)).join(''), 'a'.repeat(430));
 });

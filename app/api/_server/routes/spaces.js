@@ -9,7 +9,7 @@ export async function handleSpaces(request) {
   if (request.method === 'GET' && pathname === '/api/spaces') {
     const spaces = await readSpaces();
     return json(200, { spaces: spaces.map(({ id, title, updatedAt, archivedAt, documents, runs, decks }) =>
-      ({ id, title, updatedAt, archivedAt: archivedAt ?? null, documentCount: documents.length,
+      ({ id, title, updatedAt, archivedAt: archivedAt ?? null, documentCount: documents.filter((document) => !document.removedAt).length,
         runCount: runs.length, deckCount: (decks ?? []).length })) });
   }
   if (request.method === 'POST' && pathname === '/api/spaces') {
@@ -66,6 +66,41 @@ export async function handleSpaces(request) {
       space.updatedAt = document.createdAt;
     });
     return json(201, { document });
+  }
+  const documentItemRoute = /^\/api\/spaces\/([a-f0-9-]+)\/documents\/([a-f0-9-]+)$/.exec(pathname);
+  if (request.method === 'PATCH' && documentItemRoute) {
+    const input = await body(request);
+    if (typeof input.removed !== 'boolean') throw new Error('Choose whether to remove the document from sources.');
+    let updated;
+    await updateSpaces((spaces) => {
+      const space = findSpace(spaces, documentItemRoute[1]);
+      if (space.archivedAt) throw new Error('Restore this study space before making changes.');
+      const document = space.documents.find((item) => item.id === documentItemRoute[2]);
+      if (!document) throw new Error('Document not found.');
+      document.removedAt = input.removed ? new Date().toISOString() : null;
+      space.updatedAt = new Date().toISOString();
+      updated = document;
+    });
+    return json(200, { document: updated });
+  }
+  if (request.method === 'DELETE' && documentItemRoute) {
+    let removed;
+    await updateSpaces((spaces) => {
+      const space = findSpace(spaces, documentItemRoute[1]);
+      if (space.archivedAt) throw new Error('Restore this study space before making changes.');
+      const index = space.documents.findIndex((document) => document.id === documentItemRoute[2]);
+      if (index < 0) throw new Error('Document not found.');
+      const documentId = documentItemRoute[2];
+      space.documents.splice(index, 1);
+      const usesDocument = (item) => item.documentId === documentId || item.documentIds?.includes(documentId);
+      const runCount = space.runs.length;
+      const deckCount = (space.decks ?? []).length;
+      space.runs = space.runs.filter((run) => !usesDocument(run));
+      space.decks = (space.decks ?? []).filter((deck) => !usesDocument(deck));
+      space.updatedAt = new Date().toISOString();
+      removed = { deleted: true, removedRuns: runCount - space.runs.length, removedDecks: deckCount - space.decks.length };
+    });
+    return json(200, removed);
   }
   return null;
 }
