@@ -5,6 +5,14 @@ export function checkSource(source) {
   return source.trim();
 }
 
+export function generationDocuments(space, input) {
+  const documents = input.documentId ? space.documents.filter((item) => item.id === input.documentId) : [...space.documents];
+  if (!documents.length) throw new Error(input.documentId ? 'Document not found.' : 'Add a document before generating study material.');
+  if (documents.length > 6 || documents.reduce((total, document) => total + document.text.length, 0) > 40000)
+    throw new Error('A study space can use up to 6 documents and 40,000 characters for generation.');
+  return documents;
+}
+
 export function checkQuote(source, quote) {
   if (typeof quote !== 'string' || quote.length < 12 || !source.replace(/\s+/g, ' ').includes(quote.replace(/\s+/g, ' '))) {
     throw new Error('The generated reference could not be found in the passage. Please retry.');
@@ -29,6 +37,20 @@ export function sourceChunks(source) {
   return chunks;
 }
 
+export function sourceBlocks(documents) {
+  return documents.flatMap((document) => sourceChunks(document.text).map((text) => ({
+    id: 0, documentId: document.id, documentName: document.name, text,
+  }))).map((block, index) => ({ ...block, id: index + 1 }));
+}
+
+function citedSource(source, sourceId) {
+  const documents = typeof source === 'string' ? [{ id: null, name: '', text: source }] : source;
+  const block = sourceBlocks(documents)[sourceId - 1];
+  if (!block) throw new Error('A generated source reference was invalid. Please retry.');
+  return { documentId: block.documentId, sourceQuote: checkQuote(
+    documents.find((document) => document.id === block.documentId).text, block.text) };
+}
+
 export function checkSession(source, result) {
   if (typeof result?.overview !== 'string' || !result.overview.trim() || !Array.isArray(result.questions) || result.questions.length !== 3) {
     throw new Error('The study session response was incomplete. Please retry.');
@@ -47,7 +69,7 @@ export function checkQuiz(source, result) {
   if (typeof result?.overview !== 'string' || !result.overview.trim()) {
     throw new Error('The quiz response was incomplete. Please retry.');
   }
-  const chunks = sourceChunks(source);
+  const chunks = typeof source === 'string' ? sourceChunks(source) : sourceBlocks(source);
   return {
     overview: result.overview.trim(),
     questions: ['question1', 'question2', 'question3'].map((key, index) => {
@@ -63,13 +85,13 @@ export function checkQuiz(source, result) {
       }
       return { id: index + 1, text: question.text.trim(), options: options.map((option) => option.trim()),
         correctIndex: 'ABCD'.indexOf(question.correctOption), explanation: question.explanation.trim(),
-        sourceQuote: checkQuote(source, chunks[question.sourceId - 1]) };
+        ...citedSource(source, question.sourceId) };
     }),
   };
 }
 
 export function checkFlashcards(source, result) {
-  const chunks = sourceChunks(source);
+  const chunks = typeof source === 'string' ? sourceChunks(source) : sourceBlocks(source);
   const cards = ['card1', 'card2', 'card3', 'card4', 'card5'].map((key, index) => {
     const card = result?.[key];
     if (typeof card?.front !== 'string' || !card.front.trim() || card.front.length > 500 ||
@@ -78,7 +100,7 @@ export function checkFlashcards(source, result) {
       throw new Error('A flashcard was incomplete. Please retry.');
     }
     return { id: index + 1, front: card.front.trim(), back: card.back.trim(),
-      sourceQuote: checkQuote(source, chunks[card.sourceId - 1]) };
+      ...citedSource(source, card.sourceId) };
   });
   if (new Set(cards.map((card) => card.front.toLowerCase())).size !== cards.length)
     throw new Error('The flashcards contained duplicate questions. Please retry.');

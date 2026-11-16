@@ -2,15 +2,12 @@
 
 import { useEffect, useState } from 'react';
 import Button from '@mui/material/Button';
-import Accordion from '@mui/material/Accordion';
-import AccordionSummary from '@mui/material/AccordionSummary';
-import AccordionDetails from '@mui/material/AccordionDetails';
-import Alert from '@mui/material/Alert';
 import Paper from '@mui/material/Paper';
 import ButtonGroup from '@mui/material/ButtonGroup';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import Drawer from '@mui/material/Drawer';
 import { api } from './api';
-import { SpacesLibrary, DocumentsLibrary } from './library';
+import { SpacesLibrary, SourcesPanel } from './library';
+import SpaceActions from './space-actions';
 import QuizView from './quiz-view';
 import FlashcardView from './flashcard-view';
 import RequestDetails from './request-details';
@@ -18,12 +15,12 @@ import type { AppError, Notice, Space, SpaceSummary, StudyDocument } from './typ
 
 type Mode = 'quiz' | 'cards';
 type Kind = 'quiz' | 'flashcards';
-type View = 'spaces' | 'documents' | 'study';
+type View = 'spaces' | 'study';
 
 export default function StudyApp() {
   const [spaces, setSpaces] = useState<SpaceSummary[]>([]);
   const [space, setSpace] = useState<Space | null>(null);
-  const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
+  const [sourcesOpen, setSourcesOpen] = useState(false);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [selectedDeckId, setSelectedDeckId] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>('quiz');
@@ -43,7 +40,6 @@ export default function StudyApp() {
   }
   function applySpace(next: Space) {
     setSpace(next);
-    setSelectedDocumentId(previous => next.documents.some(item => item.id === previous) ? previous : null);
   }
   async function openSpace(id: string) {
     const result = await api<{ space: Space }>(`/api/spaces/${id}`);
@@ -67,9 +63,9 @@ export default function StudyApp() {
           if (!active) return;
           applySpace(found.space);
           const validDocument = found.space.documents.find(item => item.id === documentId);
-          setSelectedDocumentId(validDocument?.id ?? null);
-          setView(validDocument ? 'study' : 'documents');
-        } else { setSpace(null); setSelectedDocumentId(null); setView('spaces'); }
+          setSourcesOpen(Boolean(validDocument) || !found.space.documents.length);
+          setView('study');
+        } else { setSpace(null); setView('spaces'); }
       } catch (error) { if (active) report(error); }
     }
     loadLocation();
@@ -80,31 +76,53 @@ export default function StudyApp() {
   async function selectSpace(id: string) {
     try {
       await openSpace(id);
-      setSelectedDocumentId(null);
-      setView('documents');
+      setSourcesOpen(false);
+      setView('study');
       window.location.hash = id;
     } catch (error) { report(error); }
   }
-  function selectDocument(id: string) {
-    setSelectedDocumentId(id);
-    setSelectedRunId(null); setSelectedDeckId(null);
-    setView('study');
-    if (space) window.location.hash = `${space.id}/${id}`;
-  }
   function showSpaces() {
-    setSpace(null); setSelectedDocumentId(null); setView('spaces');
+    setSpace(null); setSourcesOpen(false); setView('spaces');
     window.history.pushState(null, '', `${window.location.pathname}${window.location.search}`);
-  }
-  function showDocuments() {
-    if (!space) return;
-    setSelectedDocumentId(null); setView('documents'); window.location.hash = space.id;
   }
   async function createSpace(title: string) {
     try {
       const result = await api<{ space: Space }>('/api/spaces', { title });
       await openSpace(result.space.id);
-      setSelectedDocumentId(null); setView('documents'); window.location.hash = result.space.id;
-      setNotice({ text: 'Study space created.' });
+      setSourcesOpen(true); setView('study'); window.location.hash = result.space.id;
+      setNotice(null);
+    } catch (error) { report(error); throw error; }
+  }
+  async function renameSpace(id: string, title: string) {
+    try {
+      await api(`/api/spaces/${id}`, { title }, 'PATCH');
+      if (space?.id === id) await openSpace(id);
+      else await refreshSpaces();
+      setNotice(null);
+    } catch (error) { report(error); throw error; }
+  }
+  async function archiveSpace(id: string) {
+    try {
+      await api(`/api/spaces/${id}`, { archived: true }, 'PATCH');
+      await refreshSpaces();
+      if (space?.id === id) showSpaces();
+      setNotice(null);
+    } catch (error) { report(error); throw error; }
+  }
+  async function restoreSpace(id: string) {
+    try {
+      await api(`/api/spaces/${id}`, { archived: false }, 'PATCH');
+      if (space?.id === id) await openSpace(id);
+      else await refreshSpaces();
+      setNotice(null);
+    } catch (error) { report(error); throw error; }
+  }
+  async function deleteSpace(id: string) {
+    try {
+      await api(`/api/spaces/${id}`, undefined, 'DELETE');
+      await refreshSpaces();
+      if (space?.id === id) showSpaces();
+      setNotice(null);
     } catch (error) { report(error); throw error; }
   }
   async function addDocument(file: File) {
@@ -114,27 +132,26 @@ export default function StudyApp() {
       if (file.size > 80000) throw new Error('Choose a smaller text document (20,000 characters maximum).');
       const text = await file.text();
       if (text.trim().length < 120 || text.length > 20000) throw new Error('Use a document between 120 and 20,000 characters.');
-      const result = await api<{ document: StudyDocument }>(`/api/spaces/${space.id}/documents`, { name: file.name, text });
-      setSelectedDocumentId(result.document.id);
+      await api<{ document: StudyDocument }>(`/api/spaces/${space.id}/documents`, { name: file.name, text });
+      setSourcesOpen(true);
       await openSpace(space.id);
-      setView('study'); window.location.hash = `${space.id}/${result.document.id}`;
-      setNotice({ text: 'Document saved. Generate study materials when you are ready.' });
+      setNotice(null);
     } catch (error) { report(error); throw error; }
   }
-  async function action(path: string, data: unknown, success: string) {
+  async function action(path: string, data: unknown, _success: string) {
     try {
       await api(path, data);
       if (space) await openSpace(space.id);
-      setNotice({ text: success });
+      setNotice(null);
     } catch (error) { report(error); throw error; }
   }
   async function generate(kinds: Kind[]) {
-    if (!space || !selectedDocumentId || busy || !kinds.length) return;
+    if (!space || space.archivedAt || !space.documents.length || busy || !kinds.length) return;
     const spaceId = space.id;
-    setBusy(true); setFailures([]); setNotice({ text: `Generating ${kinds.join(' and ')}…` });
+    setBusy(true); setFailures([]); setNotice(null);
     try {
       const results = await Promise.allSettled(kinds.map(kind => api(
-        `/api/spaces/${spaceId}/${kind === 'quiz' ? 'runs' : 'decks'}`, { documentId: selectedDocumentId })));
+        `/api/spaces/${spaceId}/${kind === 'quiz' ? 'runs' : 'decks'}`, {})));
       if (results.some((result, index) => result.status === 'fulfilled' && kinds[index] === 'quiz')) setSelectedRunId(null);
       if (results.some((result, index) => result.status === 'fulfilled' && kinds[index] === 'flashcards')) setSelectedDeckId(null);
       if (kinds.length === 1) setMode(kinds[0] === 'quiz' ? 'quiz' : 'cards');
@@ -142,13 +159,14 @@ export default function StudyApp() {
       const saved = kinds.filter((_, index) => results[index].status === 'fulfilled');
       const failed = kinds.flatMap((kind, index) => results[index].status === 'rejected' ? [{ kind, error: (results[index] as PromiseRejectedResult).reason as AppError }] : []);
       setFailures(failed);
-      setNotice({ text: `${saved.length ? `Saved ${saved.join(' and ')}. ` : ''}${failed.length ? `${failed.map(item => item.kind).join(' and ')} failed. Retry with its own button.` : ''}` });
+      if (failed.length) setNotice({ text: `${saved.length ? `Saved ${saved.join(' and ')}. ` : ''}${failed.map(item => item.kind).join(' and ')} failed. Retry with its own button.` });
     } catch (error) { report(error); }
     finally { setBusy(false); }
   }
-  const source = space?.documents.find(item => item.id === selectedDocumentId);
-  const hasQuiz = space?.runs.some(run => run.documentId === selectedDocumentId && run.type === 'quiz') ?? false;
-  const hasDeck = space?.decks?.some(deck => deck.documentId === selectedDocumentId) ?? false;
+  const hasQuiz = space?.runs.some(run => run.type === 'quiz' && !run.documentId) ?? false;
+  const hasDeck = space?.decks?.some(deck => !deck.documentId) ?? false;
+  const canGenerate = Boolean(space?.documents.length && !space.archivedAt && space.documents.length <= 6 &&
+    space.documents.reduce((total, document) => total + document.text.length, 0) <= 40000);
   const initialKinds: Kind[] = [!hasQuiz && 'quiz', !hasDeck && 'flashcards'].filter(Boolean) as Kind[];
 
   return <>
@@ -157,31 +175,32 @@ export default function StudyApp() {
     </div></header>
     <main>
       <div className="main-column">
-        <div id="status" role="status" aria-live="polite">{notice?.text && <Alert severity={failures.length ? 'warning' : 'info'}>{notice.text}</Alert>}{notice?.details && <RequestDetails result={notice.details} />}{failures.map((item, index) => <div key={index}><Alert severity="error">{item.kind}: {item.error.message}</Alert><RequestDetails result={item.error.details} /></div>)}</div>
-        {view === 'spaces' && <SpacesLibrary spaces={spaces} onSpace={selectSpace} onCreateSpace={createSpace} />}
-        {view === 'documents' && space && <DocumentsLibrary key={space.id} space={space} onBack={showSpaces} onDocument={selectDocument} onAddDocument={addDocument} />}
-        {view === 'study' && space && source && <section id="space" aria-labelledby="active-document-name">
-          <div className="study-navigation"><Button variant="text" onClick={showDocuments}>← {space.title} documents</Button><label htmlFor="document-switch"><span className="visually-hidden">Switch document</span><select id="document-switch" value={source.id} onChange={event => selectDocument(event.target.value)}>{space.documents.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label></div>
+        <div id="status" role="status" aria-live="polite">{notice?.text && <p>{notice.text}</p>}{notice?.details && <RequestDetails result={notice.details} />}{failures.map((item, index) => <div key={index}><p>{item.kind}: {item.error.message}</p><RequestDetails result={item.error.details} /></div>)}</div>
+        {view === 'spaces' && <SpacesLibrary spaces={spaces} onSpace={selectSpace} onCreateSpace={createSpace} onRename={renameSpace} onArchive={archiveSpace} onRestore={restoreSpace} onDelete={deleteSpace} />}
+        {view === 'study' && space && <section id="space" aria-labelledby="active-document-name">
+          <div className="study-navigation"><Button variant="text" onClick={showSpaces}>← All spaces</Button><Button variant="outlined" aria-expanded={sourcesOpen} aria-controls="sources-panel" onClick={() => setSourcesOpen(!sourcesOpen)}>Sources ({space.documents.length})</Button></div>
           <Paper className="workspace-header panel" variant="outlined">
             <div className="workspace-title-row"><div>
-              <h1 id="active-document-name">{source.name}</h1>
-              <p id="document-meta" className="document-summary">{source.text.length.toLocaleString()} characters · added {new Date(source.createdAt).toLocaleDateString()}</p>
-            </div></div>
-            {source && <Accordion id="document-preview" disableGutters elevation={0}><AccordionSummary expandIcon={<ExpandMoreIcon />}>Read source text</AccordionSummary><AccordionDetails><pre id="preview-text">{source.text}</pre></AccordionDetails></Accordion>}
+              <h1 id="active-document-name">{space.title}</h1>
+              <p id="document-meta" className="document-summary">{space.archivedAt ? 'Archived · view only' : space.documents.length ? `${space.documents.length} source ${space.documents.length === 1 ? 'document' : 'documents'}` : 'Add a source document to start studying'}</p>
+            </div><SpaceActions space={{ id: space.id, title: space.title, archivedAt: space.archivedAt, documentCount: space.documents.length, runCount: space.runs.length, deckCount: space.decks?.length ?? 0 }} onRename={renameSpace} onArchive={archiveSpace} onRestore={restoreSpace} onDelete={deleteSpace} /></div>
             <form id="run-form" className="generation-area" onSubmit={event => { event.preventDefault(); generate(initialKinds); }}>
-              <p className="generation-note">Each format makes a separate AI request.</p>
+              <p className="generation-note">{space.archivedAt ? 'Restore this space to generate new study material.' : 'Uses all current documents in this space. Each format makes a separate AI request. Limit: 6 documents and 40,000 characters total.'}{Boolean(space.documents.length) && !space.archivedAt && !canGenerate && ' This space exceeds the generation limit.'}</p>
               <div className="generation-actions">
-                {initialKinds.length > 0 && <Button id="start" type="submit" disabled={!source || busy}>{hasQuiz ? 'Generate flashcards' : hasDeck ? 'Generate quiz' : 'Generate quiz and flashcards'}</Button>}
-                <Button id="quiz-only" type="button" variant="outlined" disabled={!source || busy} onClick={() => generate(['quiz'])}>{hasQuiz ? 'New quiz' : 'Generate quiz'}</Button>
-                <Button id="cards-only" type="button" variant="outlined" disabled={!source || busy} onClick={() => generate(['flashcards'])}>{hasDeck ? 'New deck' : 'Generate flashcards'}</Button>
+                {initialKinds.length > 0 && <Button id="start" type="submit" disabled={!canGenerate || busy}>{hasQuiz ? 'Generate flashcards' : hasDeck ? 'Generate quiz' : 'Generate quiz and flashcards'}</Button>}
+                <Button id="quiz-only" type="button" variant="outlined" disabled={!canGenerate || busy} onClick={() => generate(['quiz'])}>{hasQuiz ? 'New quiz' : 'Generate quiz'}</Button>
+                <Button id="cards-only" type="button" variant="outlined" disabled={!canGenerate || busy} onClick={() => generate(['flashcards'])}>{hasDeck ? 'New deck' : 'Generate flashcards'}</Button>
               </div>
             </form>
           </Paper>
+          <Drawer anchor="right" open={sourcesOpen} onClose={() => setSourcesOpen(false)} className="sources-drawer" slotProps={{ paper: { role: 'dialog', 'aria-labelledby': 'sources-title' } }}>
+            <SourcesPanel key={space.id} space={space} readOnly={Boolean(space.archivedAt)} onAddDocument={addDocument} onClose={() => setSourcesOpen(false)} />
+          </Drawer>
           <div className="mode-header">
             <ButtonGroup className="mode-switch" aria-label="Study mode"><Button id="mode-quiz" type="button" variant={mode === 'quiz' ? 'contained' : 'text'} aria-pressed={mode === 'quiz'} onClick={() => setMode('quiz')}>Quiz</Button><Button id="mode-cards" type="button" variant={mode === 'cards' ? 'contained' : 'text'} aria-pressed={mode === 'cards'} onClick={() => setMode('cards')}>Flashcards</Button></ButtonGroup>
           </div>
-          {mode === 'quiz' ? <QuizView space={space} selectedDocumentId={selectedDocumentId} selectedRunId={selectedRunId} onSelect={setSelectedRunId} onAction={action} />
-            : <FlashcardView space={space} selectedDocumentId={selectedDocumentId} selectedDeckId={selectedDeckId} onSelect={setSelectedDeckId} onAction={action} />}
+          {mode === 'quiz' ? <QuizView space={space} readOnly={Boolean(space.archivedAt)} selectedRunId={selectedRunId} onSelect={setSelectedRunId} onAction={action} />
+            : <FlashcardView space={space} readOnly={Boolean(space.archivedAt)} selectedDeckId={selectedDeckId} onSelect={setSelectedDeckId} onAction={action} />}
         </section>}
         <footer>Generated material should be checked against its source.</footer>
       </div>

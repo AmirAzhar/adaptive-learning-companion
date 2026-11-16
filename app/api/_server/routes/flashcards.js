@@ -1,23 +1,28 @@
 import { randomUUID } from 'node:crypto';
-import { checkFlashcards } from '../study.js';
+import { checkFlashcards, generationDocuments } from '../study.js';
 import { generateFlashcards } from '../model.js';
 import { findSpace, readSpaces, updateSpaces } from '../store.js';
 import { body, json, modelResult } from '../http.js';
+
+function requireActive(space) {
+  if (space.archivedAt) throw new Error('Restore this study space before making changes.');
+  return space;
+}
 
 export async function handleFlashcards(request) {
   const pathname = new URL(request.url).pathname;
   const deckRoute = /^\/api\/spaces\/([a-f0-9-]+)\/decks$/.exec(pathname);
   if (request.method === 'POST' && deckRoute) {
     const input = await body(request);
-    const space = findSpace(await readSpaces(), deckRoute[1]);
-    const document = space.documents.find((item) => item.id === input.documentId);
-    if (!document) throw new Error('Document not found.');
-    const generated = await generateFlashcards(document.text);
-    return await modelResult(generated, (output) => checkFlashcards(document.text, output), async (result) => {
-      const deck = { id: randomUUID(), documentId: document.id, createdAt: new Date().toISOString(),
+    const space = requireActive(findSpace(await readSpaces(), deckRoute[1]));
+    const documents = generationDocuments(space, input);
+    const source = input.documentId ? documents[0].text : documents;
+    const generated = await generateFlashcards(source);
+    return await modelResult(generated, (output) => checkFlashcards(source, output), async (result) => {
+      const deck = { id: randomUUID(), ...(input.documentId ? { documentId: input.documentId } : { documentIds: documents.map((document) => document.id) }), createdAt: new Date().toISOString(),
         ...result, reviews: [], currentRound: 1, reviewCardIds: result.cards.map((card) => card.id) };
       await updateSpaces((spaces) => {
-        const current = findSpace(spaces, deckRoute[1]);
+        const current = requireActive(findSpace(spaces, deckRoute[1]));
         (current.decks ??= []).push(deck);
         current.updatedAt = deck.createdAt;
       });
@@ -32,7 +37,7 @@ export async function handleFlashcards(request) {
     if (!front || front.length > 500 || !back || back.length > 2000)
       throw new Error('Write a question under 500 characters and an answer under 2,000 characters.');
     await updateSpaces((spaces) => {
-      const space = findSpace(spaces, cardEditRoute[1]);
+      const space = requireActive(findSpace(spaces, cardEditRoute[1]));
       const deck = (space.decks ?? []).find((item) => item.id === cardEditRoute[2]);
       const card = deck?.cards.find((item) => item.id === Number(cardEditRoute[3]));
       if (!card) throw new Error('Flashcard not found.');
@@ -50,7 +55,7 @@ export async function handleFlashcards(request) {
     if (!['again', 'good'].includes(input.rating)) throw new Error('Choose Again or Good.');
     let review;
     await updateSpaces((spaces) => {
-      const space = findSpace(spaces, cardReviewRoute[1]);
+      const space = requireActive(findSpace(spaces, cardReviewRoute[1]));
       const deck = (space.decks ?? []).find((item) => item.id === cardReviewRoute[2]);
       const cardId = Number(cardReviewRoute[3]);
       if (!deck || !deck.reviewCardIds.includes(cardId)) throw new Error('Flashcard not found in this review round.');
@@ -69,7 +74,7 @@ export async function handleFlashcards(request) {
     if (!['again', 'all'].includes(input.scope)) throw new Error('Choose cards to review.');
     let result;
     await updateSpaces((spaces) => {
-      const space = findSpace(spaces, reviewRoundRoute[1]);
+      const space = requireActive(findSpace(spaces, reviewRoundRoute[1]));
       const deck = (space.decks ?? []).find((item) => item.id === reviewRoundRoute[2]);
       if (!deck) throw new Error('Flashcard deck not found.');
       const current = deck.reviewCardIds.map((cardId) =>

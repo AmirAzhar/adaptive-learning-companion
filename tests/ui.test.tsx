@@ -11,6 +11,7 @@ Object.assign(globalThis, {
   HTMLElement: dom.window.HTMLElement,
   Node: dom.window.Node,
   Element: dom.window.Element,
+  ShadowRoot: dom.window.ShadowRoot,
   DocumentFragment: dom.window.DocumentFragment,
   getComputedStyle: dom.window.getComputedStyle.bind(dom.window),
   requestAnimationFrame: (callback: FrameRequestCallback) => setTimeout(() => callback(Date.now()), 0),
@@ -39,7 +40,7 @@ function respond(value: unknown, status = 200) {
 function mockApi(space: Space) {
   globalThis.fetch = async (input, init) => {
     const path = String(input);
-    if (path === '/api/spaces' && !init?.method) return respond({ spaces: [{ id: space.id, title: space.title, documentCount: space.documents.length }] });
+    if (path === '/api/spaces' && !init?.method) return respond({ spaces: [{ id: space.id, title: space.title, documentCount: space.documents.length, runCount: space.runs.length, deckCount: space.decks?.length ?? 0, archivedAt: space.archivedAt ?? null }] });
     if (path === `/api/spaces/${space.id}` && !init?.method) return respond({ space: structuredClone(space) });
     if (path.endsWith('/answers')) {
       const body = JSON.parse(String(init?.body));
@@ -61,14 +62,14 @@ function mockApi(space: Space) {
   };
 }
 
-test('library opens a document and saves quiz and flashcard practice through the existing API', async () => {
+test('opening a space goes straight to quiz and flashcard practice', async () => {
   const space = fixture(); mockApi(space);
   render(<StudyApp />);
   await screen.findByRole('heading', { name: 'Study spaces' });
-  fireEvent.click(await screen.findByRole('button', { name: /Databases/ }));
-  fireEvent.click(await screen.findByRole('button', { name: /notes.txt/ }));
+  fireEvent.click(await screen.findByRole('button', { name: /^Databases.*document$/ }));
   await screen.findByText(/What does an index help\?/);
-  assert.equal(window.location.hash, '#space-1/doc-1');
+  assert.equal(window.location.hash, '#space-1');
+  assert.equal(screen.queryByRole('heading', { name: 'Documents (1)' }), null);
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 250)); });
   fireEvent.click(screen.getByRole('radio', { name: 'Find rows' }));
   fireEvent.click(screen.getByRole('button', { name: 'Check answer' }));
@@ -90,22 +91,26 @@ test('library opens a document and saves quiz and flashcard practice through the
 
 test('a failed quiz generation keeps the saved flashcard deck and shows request details', async () => {
   const space = fixture();
+  space.documents.push({ id: 'doc-2', name: 'transactions.txt', text: 'A transaction groups related changes. '.repeat(5), createdAt: '2026-01-02T00:00:00Z' });
   const deck = space.decks![0];
   space.runs = []; space.decks = [];
+  const generationBodies: unknown[] = [];
   globalThis.fetch = async (input, init) => {
     const path = String(input);
     if (path === '/api/spaces' && !init?.method) return respond({ spaces: [{ id: space.id, title: space.title, documentCount: 1 }] });
     if (path === `/api/spaces/${space.id}` && !init?.method) return respond({ space: structuredClone(space) });
-    if (path.endsWith('/runs')) return respond({ error: 'Quiz needs a retry.', apiRequest: { model: 'mock-model' }, estimatedCostUsd: null }, 422);
-    if (path.endsWith('/decks')) { space.decks!.push(deck); return respond({ saved: true }); }
+    if (path.endsWith('/runs')) { generationBodies.push(JSON.parse(String(init?.body))); return respond({ error: 'Quiz needs a retry.', apiRequest: { model: 'mock-model' }, estimatedCostUsd: null }, 422); }
+    if (path.endsWith('/decks')) { generationBodies.push(JSON.parse(String(init?.body))); space.decks!.push(deck); return respond({ saved: true }); }
     throw new Error(`Unexpected request: ${path}`);
   };
   render(<StudyApp />);
-  fireEvent.click(await screen.findByRole('button', { name: /Databases/ }));
-  fireEvent.click(await screen.findByRole('button', { name: /notes.txt/ }));
+  fireEvent.click(await screen.findByRole('button', { name: /^Databases.*document$/ }));
+  await waitFor(() => assert.equal(window.location.hash, '#space-1'));
+  assert.equal(document.querySelector('#document-switch'), null);
   await screen.findByRole('button', { name: 'Generate quiz and flashcards' });
   fireEvent.click(screen.getByRole('button', { name: 'Generate quiz and flashcards' }));
   await screen.findByText(/Saved flashcards.*quiz failed/);
+  assert.deepEqual(generationBodies, [{}, {}]);
   assert.equal(space.decks!.length, 1);
   assert.ok(screen.getByText('quiz: Quiz needs a retry.'));
   assert.ok(screen.getByText('View API request · cost unavailable'));
@@ -115,25 +120,41 @@ test('a failed quiz generation keeps the saved flashcard deck and shows request 
   window.history.replaceState(null, '', '/');
 });
 
-test('spaces and documents can be searched and navigated without a persistent sidebar', async () => {
+test('sources are optional within the space workspace', async () => {
   const space = fixture(); mockApi(space);
   try {
     render(<StudyApp />);
     const spaceSearch = await screen.findByRole('textbox', { name: 'Find a space' });
     fireEvent.change(spaceSearch, { target: { value: 'missing' } });
-    assert.ok(screen.getByText('No spaces match your search.'));
+    await screen.findByText('No spaces match your search.');
     fireEvent.change(spaceSearch, { target: { value: 'data' } });
-    fireEvent.click(screen.getByRole('button', { name: /Databases/ }));
-    const documentSearch = await screen.findByRole('textbox', { name: 'Find a document' });
-    fireEvent.change(documentSearch, { target: { value: 'other' } });
-    assert.ok(screen.getByText('No documents match your search.'));
-    fireEvent.change(documentSearch, { target: { value: 'notes' } });
-    fireEvent.click(screen.getByRole('button', { name: /notes.txt/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Databases.*document$/ }));
     await screen.findByText(/What does an index help\?/);
-    fireEvent.click(screen.getByRole('button', { name: '← Databases documents' }));
-    await screen.findByRole('heading', { name: 'Documents (1)' });
-    fireEvent.click(screen.getByRole('button', { name: '← All spaces' }));
-    await screen.findByRole('heading', { name: 'Study spaces' });
+    assert.equal(screen.queryByRole('button', { name: /notes.txt/ }), null);
+    fireEvent.click(screen.getByRole('button', { name: 'Sources (1)' }));
+    await screen.findByRole('heading', { name: 'Sources' });
+    assert.equal(document.querySelector('main #sources-panel'), null);
+    assert.ok(screen.getByText('notes.txt'));
+    assert.equal(screen.queryByRole('button', { name: /notes.txt/ }), null);
+    assert.equal(screen.queryByText(/A database index helps queries find rows faster\./), null);
+    assert.equal(window.location.hash, '#space-1');
+    assert.ok(screen.getByRole('button', { name: 'Close sources' }));
+  } finally {
+    cleanup();
+    window.history.replaceState(null, '', '/');
+  }
+});
+
+test('archived spaces are listed without an open action', async () => {
+  const space = fixture(); space.archivedAt = '2026-01-03T00:00:00Z'; mockApi(space);
+  try {
+    render(<StudyApp />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Archived spaces (1)' }));
+    assert.ok(screen.getByText('Databases'));
+    assert.equal(screen.queryByRole('button', { name: /^Databases.*document$/ }), null);
+    assert.equal(window.location.hash, '');
+    fireEvent.click(screen.getByRole('button', { name: 'More actions for Databases' }));
+    assert.ok(await screen.findByRole('menuitem', { name: 'Restore' }));
   } finally {
     cleanup();
     window.history.replaceState(null, '', '/');
