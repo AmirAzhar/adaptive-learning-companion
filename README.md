@@ -1,6 +1,6 @@
 # Adaptive AI Learning Companion
 
-For the current implementation and a new-chat handoff, see [CONTEXT.md](CONTEXT.md).
+For the current implementation and a new-chat handoff, see [CONTEXT.md](CONTEXT.md). The proposed study-space size and generation quality evaluation is in [EVALUATION.md](EVALUATION.md).
 
 ## Project brief
 
