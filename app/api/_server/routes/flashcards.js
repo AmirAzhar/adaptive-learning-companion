@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { checkFlashcards, coveragePlan, generationDocuments, generationTargets, mergeCoverage } from '../study.js';
-import { generateFlashcards } from '../model.js';
+import { checkFlashcards, generationDocuments, generationTargets } from '../study.js';
+import { completeCoverage } from '../coverage.js';
+import { generateFlashcards, generateFlashcardCoverage } from '../model.js';
 import { findSpace, readSpaces, updateSpaces } from '../store.js';
 import { body, json, modelResult } from '../http.js';
 
@@ -16,24 +17,19 @@ export async function handleFlashcards(request) {
     const input = await body(request);
     const space = requireActive(findSpace(await readSpaces(), deckRoute[1]));
     const documents = generationDocuments(space, input);
-    const source = input.documentId ? documents[0].text : documents;
+    if (documents.length > 20) throw new Error('Choose at most 20 sources for a flashcard deck.');
+    const source = documents;
     const generated = await generateFlashcards(source);
     return await modelResult(generated, (output) => checkFlashcards(source, output), async (result) => {
       const target = generationTargets(source).cards;
-      const { kept, missing } = coveragePlan(documents, result.cards, target);
-      if (missing.length) {
-        try {
-          const extra = await generateFlashcards(missing, { target: missing.length });
-          result.apiCalls = [
-            { apiRequest: result.apiRequest, usage: result.usage, estimatedCostUsd: result.estimatedCostUsd },
-            { apiRequest: extra.requestBody, usage: extra.usage, estimatedCostUsd: extra.estimatedCostUsd },
-          ];
-          const checked = checkFlashcards(missing, extra.output, missing.length);
-          const merged = mergeCoverage(kept, checked.cards, 'front', target);
-          if (new Set(merged.map((item) => item.documentId)).size > new Set(result.cards.map((item) => item.documentId)).size)
-            result.cards = merged;
-        } catch { /* Keep the valid first result and show its actual source coverage. */ }
-      }
+      const coverage = await completeCoverage({ documents, items: result.cards, target, field: 'front',
+        generate: generateFlashcardCoverage,
+        check: (pending, item) => checkFlashcards(pending, { cards: [item] }, 1).cards[0],
+        firstCall: { apiRequest: result.apiRequest, usage: result.usage, estimatedCostUsd: result.estimatedCostUsd } });
+      if (coverage.apiCalls.length > 1) result.apiCalls = coverage.apiCalls;
+      if (coverage.uncovered.length) return json(422, { error: `Could not generate a valid flashcard for: ${coverage.uncovered.map((document) => document.name).join(', ')}. Please retry.`,
+        apiRequest: result.apiRequest, usage: result.usage, estimatedCostUsd: result.estimatedCostUsd, apiCalls: coverage.apiCalls });
+      result.cards = coverage.items;
       const deck = { id: randomUUID(), ...(input.documentId ? { documentId: input.documentId } : { documentIds: documents.map((document) => document.id) }), createdAt: new Date().toISOString(),
         ...result, reviews: [], currentRound: 1, reviewCardIds: result.cards.map((card) => card.id) };
       await updateSpaces((spaces) => {

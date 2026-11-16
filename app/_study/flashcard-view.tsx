@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import Button from '@mui/material/Button';
+import IconButton from '@mui/material/IconButton';
+import RefreshIcon from '@mui/icons-material/Refresh';
 import Accordion from '@mui/material/Accordion';
 import AccordionSummary from '@mui/material/AccordionSummary';
 import AccordionDetails from '@mui/material/AccordionDetails';
@@ -12,7 +14,7 @@ import RequestDetails from './request-details';
 import type { AppError, Deck, Flashcard, Space } from './types';
 
 type Action = (path: string, data: unknown, success: string) => Promise<void>;
-type Props = { space: Space; readOnly?: boolean; selectedDeckId: string | null; onSelect: (id: string) => void; onAction: Action };
+type Props = { space: Space; readOnly?: boolean; selectedDeckId: string | null; onSelect: (id: string) => void; onAction: Action; onGenerate: () => void; canGenerate: boolean };
 
 function CardEdit({ card, deck, spaceId, sourceName, readOnly, onAction }: { card: Flashcard; deck: Deck; spaceId: string; sourceName?: string; readOnly?: boolean; onAction: Action }) {
   const [front, setFront] = useState(card.front);
@@ -86,16 +88,18 @@ function DeckView({ deck, space, readOnly, onAction }: { deck: Deck; space: Spac
   </Paper>;
 }
 
-export default function FlashcardView({ space, readOnly, selectedDeckId, onSelect, onAction }: Props) {
+export default function FlashcardView({ space, readOnly, selectedDeckId, onSelect, onAction, onGenerate, canGenerate }: Props) {
   const decks = space.decks ?? [];
   const reversed = [...decks].reverse();
   const chosen = decks.find(deck => deck.id === selectedDeckId) ?? reversed[0];
   return <section id="cards-pane" className="study-pane" aria-label="Flashcard practice">
     <div className="study-pane-heading"><div><h3>Flashcards</h3><p>Think of your answer before you reveal it, then choose Again or Good.</p></div>
-      {decks.length > 1 && <div id="deck-picker-wrap" className="history-picker">
+      <div className="study-pane-actions">{decks.length > 1 && <div id="deck-picker-wrap" className="history-picker">
         <TextField id="deck-picker" label="Saved deck" select fullWidth size="small" slotProps={{ select: { native: true } }} value={chosen.id} onChange={event => onSelect(event.target.value)}>{reversed.map((deck, index) => <option key={deck.id} value={deck.id}>Deck {decks.length - index} · {new Date(deck.createdAt).toLocaleString()}</option>)}</TextField>
       </div>}
+        <IconButton className="study-refresh" type="button" aria-label={decks.length ? 'New deck' : 'Generate flashcards'} title={decks.length ? 'Create a new deck; earlier decks stay saved' : 'Generate flashcards'} disabled={!canGenerate || readOnly} onClick={onGenerate}><RefreshIcon /></IconButton>
+      </div>
     </div>
-    <div id="decks">{chosen ? <DeckView key={chosen.id} deck={chosen} space={space} readOnly={readOnly} onAction={onAction} /> : 'No flashcards for this space yet. Generate a deck above to start reviewing.'}</div>
+    <div id="decks">{chosen ? <DeckView key={chosen.id} deck={chosen} space={space} readOnly={readOnly} onAction={onAction} /> : 'No flashcards for this space yet. Use the refresh button to create a deck.'}</div>
   </section>;
 }

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { checkQuiz, checkFeedback, coveragePlan, generationDocuments, generationTargets, mergeCoverage } from '../study.js';
-import { generateQuiz, gradeAnswer } from '../model.js';
+import { checkQuiz, checkFeedback, generationDocuments, generationTargets } from '../study.js';
+import { completeCoverage } from '../coverage.js';
+import { generateQuiz, generateQuizCoverage, gradeAnswer } from '../model.js';
 import { findSpace, readSpaces, updateSpaces } from '../store.js';
 import { body, json, modelResult } from '../http.js';
 
@@ -23,24 +24,19 @@ export async function handleQuizzes(request) {
     const input = await body(request);
     const space = requireActive(findSpace(await readSpaces(), runRoute[1]));
     const documents = generationDocuments(space, input);
-    const source = input.documentId ? documents[0].text : documents;
+    if (documents.length > 10) throw new Error('Choose at most 10 sources for a quiz.');
+    const source = documents;
     const generated = await generateQuiz(source);
     return await modelResult(generated, (output) => checkQuiz(source, output), async (result) => {
       const target = generationTargets(source).questions;
-      const { kept, missing } = coveragePlan(documents, result.questions, target);
-      if (missing.length) {
-        try {
-          const extra = await generateQuiz(missing, { target: missing.length });
-          result.apiCalls = [
-            { apiRequest: result.apiRequest, usage: result.usage, estimatedCostUsd: result.estimatedCostUsd },
-            { apiRequest: extra.requestBody, usage: extra.usage, estimatedCostUsd: extra.estimatedCostUsd },
-          ];
-          const checked = checkQuiz(missing, extra.output, missing.length);
-          const merged = mergeCoverage(kept, checked.questions, 'text', target);
-          if (new Set(merged.map((item) => item.documentId)).size > new Set(result.questions.map((item) => item.documentId)).size)
-            result.questions = merged;
-        } catch { /* Keep the valid first result and show its actual source coverage. */ }
-      }
+      const coverage = await completeCoverage({ documents, items: result.questions, target, field: 'text',
+        generate: generateQuizCoverage,
+        check: (pending, item) => checkQuiz(pending, { questions: [item] }, 1).questions[0],
+        firstCall: { apiRequest: result.apiRequest, usage: result.usage, estimatedCostUsd: result.estimatedCostUsd } });
+      if (coverage.apiCalls.length > 1) result.apiCalls = coverage.apiCalls;
+      if (coverage.uncovered.length) return json(422, { error: `Could not generate a valid question for: ${coverage.uncovered.map((document) => document.name).join(', ')}. Please retry.`,
+        apiRequest: result.apiRequest, usage: result.usage, estimatedCostUsd: result.estimatedCostUsd, apiCalls: coverage.apiCalls });
+      result.questions = coverage.items;
       const run = { id: randomUUID(), ...(input.documentId ? { documentId: input.documentId } : { documentIds: documents.map((document) => document.id) }), type: 'quiz',
         createdAt: new Date().toISOString(), ...result, attempts: [], currentRound: 1,
         practiceQuestionIds: result.questions.map((question) => question.id) };

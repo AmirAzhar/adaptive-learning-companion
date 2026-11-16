@@ -26,11 +26,12 @@ test('flashcard decks are independent, editable, reviewed locally, and saved', a
     if (!String(url).startsWith('https://api.openai.com/')) return originalFetch(url, options);
     modelCalls++;
     const body = JSON.parse(options.body);
-    assert.equal(body.text.format.name, 'study_flashcards');
+    assert.ok(['study_flashcards', 'flashcard_source_coverage'].includes(body.text.format.name));
     assert.equal(body.store, false);
-    const cards = { cards: body.instructions.includes('between one and 1 distinct')
-      ? [{ front: 'What does the other source discuss?', back: 'Database indexes.', sourceId: 1 }]
-      : Array.from({ length: 20 }, (_, index) =>
+    const cards = body.text.format.name === 'flashcard_source_coverage'
+      ? { source1: { front: 'What does the other source discuss?', back: 'Database indexes.',
+        sourceId: body.text.format.schema.properties.source1.properties.sourceId.enum[0] } }
+      : { cards: Array.from({ length: 20 }, (_, index) =>
         ({ front: `Question ${index + 1}?`, back: `Answer ${index + 1}.`, sourceId: 1 })) };
     return new Response(JSON.stringify({ status: 'completed', model: 'gpt-4o-mini',
       usage: { input_tokens: 100, output_tokens: 50, total_tokens: 150 },

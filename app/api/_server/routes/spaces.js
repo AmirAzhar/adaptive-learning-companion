@@ -1,8 +1,9 @@
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { checkSource } from '../study.js';
+import { checkSource, checkSpaceSummary, generationDocuments } from '../study.js';
+import { generateSpaceSummary } from '../model.js';
 import { findSpace, readSpaces, updateSpaces } from '../store.js';
-import { body, json } from '../http.js';
+import { body, json, modelResult } from '../http.js';
 
 export async function handleSpaces(request) {
   const pathname = new URL(request.url).pathname;
@@ -17,7 +18,7 @@ export async function handleSpaces(request) {
     const title = typeof input.title === 'string' ? input.title.trim() : '';
     if (!title || title.length > 80) throw new Error('Name your study space in 80 characters or fewer.');
     const now = new Date().toISOString();
-    const space = { id: randomUUID(), title, createdAt: now, updatedAt: now, documents: [], runs: [], decks: [] };
+    const space = { id: randomUUID(), title, createdAt: now, updatedAt: now, documents: [], runs: [], decks: [], summary: null };
     await updateSpaces((spaces) => spaces.push(space));
     return json(201, { space });
   }
@@ -51,6 +52,25 @@ export async function handleSpaces(request) {
       spaces.splice(index, 1);
     });
     return json(200, { deleted: true });
+  }
+  const summaryRoute = /^\/api\/spaces\/([a-f0-9-]+)\/summary$/.exec(pathname);
+  if (request.method === 'POST' && summaryRoute) {
+    const space = findSpace(await readSpaces(), summaryRoute[1]);
+    if (space.archivedAt) throw new Error('Restore this study space before making changes.');
+    const documents = generationDocuments(space, {});
+    const generated = await generateSpaceSummary(documents);
+    return await modelResult(generated, (output) => checkSpaceSummary(documents, output), async (result) => {
+      const summary = { ...result, documentIds: documents.map((document) => document.id), createdAt: new Date().toISOString() };
+      await updateSpaces((spaces) => {
+        const current = findSpace(spaces, summaryRoute[1]);
+        if (current.archivedAt || JSON.stringify(current.documents.filter((document) => !document.removedAt).map((document) => document.id)) !== JSON.stringify(summary.documentIds))
+          throw new Error('Sources changed during summary generation. Please retry.');
+        current.summary = summary;
+        current.updatedAt = summary.createdAt;
+      });
+      result.createdAt = summary.createdAt;
+      result.documentIds = summary.documentIds;
+    });
   }
   const documentRoute = /^\/api\/spaces\/([a-f0-9-]+)\/documents$/.exec(pathname);
   if (request.method === 'POST' && documentRoute) {
@@ -97,6 +117,7 @@ export async function handleSpaces(request) {
       const deckCount = (space.decks ?? []).length;
       space.runs = space.runs.filter((run) => !usesDocument(run));
       space.decks = (space.decks ?? []).filter((deck) => !usesDocument(deck));
+      if (space.summary?.documentIds.includes(documentId)) space.summary = null;
       space.updatedAt = new Date().toISOString();
       removed = { deleted: true, removedRuns: runCount - space.runs.length, removedDecks: deckCount - space.decks.length };
     });

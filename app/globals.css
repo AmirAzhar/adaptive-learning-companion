@@ -77,6 +77,10 @@ form { margin: 0; }
 .mode-switch .MuiButton-root[aria-pressed="true"], .mode-switch .MuiButton-root[aria-pressed="true"]:hover { background: #fff; color: #15583c; box-shadow: 0 1px 5px #153d2620; }
 .study-pane { background: #fff; border: 1px solid #dae4d9; border-radius: 18px; padding: 24px 28px 32px; box-shadow: 0 6px 24px #1c47330a; }
 .study-pane-heading { display: flex; justify-content: space-between; align-items: end; gap: 20px; flex-wrap: wrap; border-bottom: 1px solid #e4ebe1; padding-bottom: 19px; }
+.study-pane-actions { display: flex; align-items: center; gap: 10px; min-width: 0; max-width: 100%; }
+.study-pane-actions .history-picker { flex: 1 1 280px; min-width: 0; }
+.study-refresh.MuiIconButton-root { flex: none; border: 1px solid #b7cdbb; border-radius: 10px; color: #185c40; }
+.study-refresh.MuiIconButton-root:hover { background: #e8f2e8; }
 .study-pane-heading p { color: #61746a; font-size: .9rem; margin: 0; }
 .history-picker { min-width: min(100%, 280px); }
 .history-picker label { margin-bottom: 5px; color: #506b58; font-size: .78rem; }
@@ -307,6 +311,13 @@ main { width: min(980px, calc(100% - 32px)); }
 .generation-sources .MuiButton-root { justify-self: start; }
 .source-coverage { margin: 8px 0 14px; color: #52675a; font-size: .87rem; overflow-wrap: anywhere; }
 .workspace-title-row h1 { margin: 0 0 6px; }
+.summary-content { padding-top: 22px; color: #344d3d; }
+.summary-content > p:last-child { margin-bottom: 0; }
+.summary-source { margin-top: 20px; padding-top: 16px; border-top: 1px solid #e4ebe1; }
+.summary-source h4 { margin-bottom: 8px; }
+.summary-source ul { margin: 8px 0 0; padding-left: 22px; }
+.summary-source li + li { margin-top: 10px; }
+.summary-source details { margin-top: 4px; color: #52675a; font-size: .88rem; }
 .mode-header { margin: 20px 0 12px; }
 @media (max-width: 600px) {
   .sources-panel { padding: 20px 18px; }

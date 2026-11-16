@@ -21,8 +21,9 @@ export function generationDocuments(space, input) {
 
 export function generationTargets(source) {
   const characters = typeof source === 'string' ? source.length : source.reduce((total, document) => total + document.text.length, 0);
-  return { questions: Math.min(10, Math.max(1, Math.ceil(characters / 2500))),
-    cards: Math.min(20, Math.max(1, Math.ceil(characters / 1250))) };
+  const minimum = typeof source === 'string' ? 1 : source.length;
+  return { questions: Math.min(10, Math.max(minimum, Math.ceil(characters / 2500))),
+    cards: Math.min(20, Math.max(minimum, Math.ceil(characters / 1250))) };
 }
 
 export function coveragePlan(documents, items, target) {
@@ -82,6 +83,17 @@ export function sourceBlocks(documents) {
   }))).map((block, index) => ({ ...block, id: index + 1 }));
 }
 
+export function summaryParts(documents) {
+  const blocks = sourceBlocks(documents);
+  return documents.map((document) => {
+    const own = blocks.filter((block) => block.documentId === document.id);
+    const count = Math.min(8, Math.max(document.text.length > 1000 ? 2 : 1,
+      Math.ceil(document.text.length / 2500)), own.length);
+    return Array.from({ length: count }, (_, index) => own.slice(
+      Math.floor(index * own.length / count), Math.floor((index + 1) * own.length / count)));
+  });
+}
+
 function citedSource(source, sourceId) {
   const documents = typeof source === 'string' ? [{ id: null, name: '', text: source }] : source;
   const block = sourceBlocks(documents)[sourceId - 1];
@@ -105,7 +117,7 @@ export function checkSession(source, result) {
 }
 
 export function checkQuiz(source, result, maxQuestions = generationTargets(source).questions) {
-  if (typeof result?.overview !== 'string' || !result.overview.trim()) {
+  if (result?.overview !== undefined && (typeof result.overview !== 'string' || !result.overview.trim())) {
     throw new Error('The quiz response was incomplete. Please retry.');
   }
   const chunks = typeof source === 'string' ? sourceChunks(source) : sourceBlocks(source);
@@ -128,7 +140,28 @@ export function checkQuiz(source, result, maxQuestions = generationTargets(sourc
     });
   if (new Set(checked.map((question) => question.text.toLowerCase())).size !== checked.length)
     throw new Error('The quiz contained duplicate questions. Please retry.');
-  return { overview: result.overview.trim(), questions: checked };
+  return { ...(result.overview === undefined ? {} : { overview: result.overview.trim() }), questions: checked };
+}
+
+export function checkSpaceSummary(documents, result) {
+  if (typeof result?.overview !== 'string' || !result.overview.trim() || result.overview.length > 2500)
+    throw new Error('The main ideas summary was incomplete. Please retry.');
+  const blocks = sourceBlocks(documents);
+  const parts = summaryParts(documents);
+  const sections = documents.map((document, index) => {
+    const section = result.sources?.[`source${index + 1}`];
+    const checked = parts[index].map((part, partIndex) => {
+      const idea = section?.[`part${partIndex + 1}`];
+      const block = blocks[idea?.sourceId - 1];
+      if (typeof idea?.text !== 'string' || !idea.text.trim() || idea.text.length > 500 || !part.some((item) => item.id === block?.id))
+        throw new Error(`The summary had an invalid idea or citation for ${document.name}. Please retry.`);
+      return { text: idea.text.trim(), sourceQuote: checkQuote(document.text, block.text) };
+    });
+    if (new Set(checked.map((idea) => idea.text.toLowerCase())).size !== checked.length)
+      throw new Error(`The summary repeated an idea from ${document.name}. Please retry.`);
+    return { documentId: document.id, ideas: checked };
+  });
+  return { overview: result.overview.trim(), sections };
 }
 
 export function checkFlashcards(source, result, maxCards = generationTargets(source).cards) {

@@ -6,6 +6,8 @@ import Accordion from '@mui/material/Accordion';
 import AccordionSummary from '@mui/material/AccordionSummary';
 import AccordionDetails from '@mui/material/AccordionDetails';
 import Button from '@mui/material/Button';
+import IconButton from '@mui/material/IconButton';
+import RefreshIcon from '@mui/icons-material/Refresh';
 import FormControlLabel from '@mui/material/FormControlLabel';
 import Paper from '@mui/material/Paper';
 import Radio from '@mui/material/Radio';
@@ -16,7 +18,7 @@ import RequestDetails from './request-details';
 import type { LegacyAttempt, LegacyQuestion, LegacyRun, QuizAttempt, QuizQuestion, QuizRun, Space, StudyRun } from './types';
 
 type Action = (path: string, data: unknown, success: string) => Promise<void>;
-type Props = { space: Space; readOnly?: boolean; selectedRunId: string | null; onSelect: (id: string) => void; onAction: Action };
+type Props = { space: Space; readOnly?: boolean; selectedRunId: string | null; onSelect: (id: string) => void; onAction: Action; onGenerate: () => void; canGenerate: boolean };
 
 function QuizQuestionForm({ question, attempt, run, spaceId, sourceName, readOnly, onAction }: { question: QuizQuestion; attempt?: QuizAttempt; run: QuizRun; spaceId: string; sourceName?: string; readOnly?: boolean; onAction: Action }) {
   const [choice, setChoice] = useState('');
@@ -90,7 +92,8 @@ function Run({ run, space, readOnly, onAction }: { run: StudyRun; space: Space; 
   return <Paper component="article" className="panel run" elevation={0}>
     <div className="run-header"><h3>{source?.name || `${quiz?.documentIds?.length ?? 0} documents`} · {new Date(run.createdAt).toLocaleString()}</h3><span className="run-badge">{run.type === 'quiz' ? `Quiz · round ${round}` : 'Open-ended · 3 questions'}</span></div>
     {sourceIds.length > 1 && <p className="source-coverage">Questions cover {sourceIds.length - uncovered.length} of {sourceIds.length} selected sources.{uncovered.length > 0 && ` Not covered: ${uncovered.join(', ')}.`}</p>}
-    <strong className="overview-label">Main ideas</strong><p className="run-overview">{run.overview}</p><RequestDetails result={run} />
+    {run.overview && <Accordion className="quiz-history" disableGutters elevation={0}><AccordionSummary expandIcon={<ExpandMoreIcon />}>Earlier quiz overview</AccordionSummary><AccordionDetails><p>{run.overview}</p></AccordionDetails></Accordion>}
+    <RequestDetails result={run} />
     {quiz ? <>
       <p className="quiz-progress">{ids.filter(id => roundAttempts.some(attempt => attempt.questionId === id)).length} of {ids.length} questions answered in this round</p>
       {visible.map(question => <QuizQuestionForm key={`${run.id}-${round}-${question.id}`} question={question} attempt={roundAttempts.find(attempt => attempt.questionId === question.id)} run={quiz} spaceId={space.id} sourceName={space.documents.find(item => item.id === (question.documentId ?? run.documentId))?.name} readOnly={readOnly} onAction={onAction} />)}
@@ -106,16 +109,18 @@ function Run({ run, space, readOnly, onAction }: { run: StudyRun; space: Space; 
   </Paper>;
 }
 
-export default function QuizView({ space, readOnly, selectedRunId, onSelect, onAction }: Props) {
+export default function QuizView({ space, readOnly, selectedRunId, onSelect, onAction, onGenerate, canGenerate }: Props) {
   const runs = space.runs;
   const reversed = [...runs].reverse();
   const chosen = runs.find(run => run.id === selectedRunId) ?? reversed[0];
   return <section id="quiz-pane" className="study-pane" aria-label="Quiz practice">
     <div className="study-pane-heading"><div><h3>Quiz</h3><p>Choose an answer, then check the explanation and source.</p></div>
-      {runs.length > 1 && <div id="quiz-picker-wrap" className="history-picker">
+      <div className="study-pane-actions">{runs.length > 1 && <div id="quiz-picker-wrap" className="history-picker">
         <TextField id="quiz-picker" label="Saved quiz" select fullWidth size="small" slotProps={{ select: { native: true } }} value={chosen.id} onChange={event => onSelect(event.target.value)}>{reversed.map((run, index) => <option key={run.id} value={run.id}>{run.type === 'quiz' ? 'Quiz' : 'Open-ended'} {runs.length - index} · {new Date(run.createdAt).toLocaleString()}</option>)}</TextField>
       </div>}
+        <IconButton className="study-refresh" type="button" aria-label={runs.some(run => run.type === 'quiz') ? 'New quiz' : 'Generate quiz'} title={runs.some(run => run.type === 'quiz') ? 'Create a new quiz; earlier quizzes stay saved' : 'Generate quiz'} disabled={!canGenerate || readOnly} onClick={onGenerate}><RefreshIcon /></IconButton>
+      </div>
     </div>
-    <div id="runs">{chosen ? <Run key={chosen.id} run={chosen} space={space} readOnly={readOnly} onAction={onAction} /> : 'No quiz for this space yet. Generate one above to start practicing.'}</div>
+    <div id="runs">{chosen ? <Run key={chosen.id} run={chosen} space={space} readOnly={readOnly} onAction={onAction} /> : 'No quiz for this space yet. Use the refresh button to start practicing.'}</div>
   </section>;
 }

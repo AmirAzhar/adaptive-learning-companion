@@ -74,12 +74,20 @@ function mockApi(space: Space) {
   };
 }
 
-test('opening a space goes straight to quiz and flashcard practice', async () => {
+test('opening a space starts on main ideas and switches to quiz and flashcard practice', async () => {
   const space = fixture(); mockApi(space);
   render(<StudyApp />);
   await screen.findByRole('heading', { name: 'Study spaces' });
   fireEvent.click(await screen.findByRole('button', { name: /^Databases.*document$/ }));
+  assert.equal((await screen.findByRole('button', { name: 'Main ideas' })).getAttribute('aria-pressed'), 'true');
+  const summaryPane = screen.getByRole('region', { name: 'Main ideas' });
+  assert.ok(summaryPane.classList.contains('study-pane'));
+  assert.ok(summaryPane.querySelector('.study-pane-heading'));
+  assert.ok(screen.getByRole('button', { name: 'Generate main ideas' }));
+  assert.equal(screen.queryByRole('region', { name: 'Quiz practice' }), null);
+  fireEvent.click(screen.getByRole('button', { name: 'Quiz' }));
   await screen.findByText(/What does an index help\?/);
+  assert.equal(screen.queryByRole('region', { name: 'Main ideas' }), null);
   assert.equal(window.location.hash, '#space-1');
   assert.equal(screen.queryByRole('heading', { name: 'Documents (1)' }), null);
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 250)); });
@@ -113,6 +121,7 @@ test('a failed quiz generation keeps the saved flashcard deck and shows request 
     if (path === `/api/spaces/${space.id}` && !init?.method) return respond({ space: structuredClone(space) });
     if (path.endsWith('/runs')) { generationBodies.push(JSON.parse(String(init?.body))); return respond({ error: 'Quiz needs a retry.', apiRequest: { model: 'mock-model' }, estimatedCostUsd: null }, 422); }
     if (path.endsWith('/decks')) { generationBodies.push(JSON.parse(String(init?.body))); space.decks!.push(deck); return respond({ saved: true }); }
+    if (path.endsWith('/summary')) { generationBodies.push(JSON.parse(String(init?.body))); space.summary = { createdAt: '2026-01-03T00:00:00Z', documentIds: space.documents.map(document => document.id), overview: 'Indexes and transactions organize database work.', sections: space.documents.map(document => ({ documentId: document.id, ideas: [{ text: `An idea from ${document.name}`, sourceQuote: document.text.slice(0, 30) }] })) }; return respond({ saved: true }); }
     throw new Error(`Unexpected request: ${path}`);
   };
   render(<StudyApp />);
@@ -122,10 +131,17 @@ test('a failed quiz generation keeps the saved flashcard deck and shows request 
   await screen.findByRole('button', { name: 'Generate quiz and flashcards' });
   fireEvent.click(screen.getByRole('button', { name: 'Generate quiz and flashcards' }));
   await screen.findByText(/Saved flashcards.*quiz failed/);
-  assert.deepEqual(generationBodies, [{}, {}]);
+  assert.deepEqual(generationBodies, [{}, {}, {}]);
+  const mainIdeas = screen.getByRole('region', { name: 'Main ideas' });
+  assert.ok(mainIdeas.textContent?.includes('Indexes and transactions organize database work.'));
+  assert.ok(mainIdeas.querySelector('.study-pane-heading'));
+  assert.ok(screen.getByRole('button', { name: 'Refresh main ideas' }));
+  assert.ok(screen.getByRole('button', { name: 'Main ideas' }).compareDocumentPosition(mainIdeas) & Node.DOCUMENT_POSITION_FOLLOWING);
   assert.equal(space.decks!.length, 1);
   assert.ok(screen.getByText('quiz: Quiz needs a retry.'));
   assert.ok(screen.getByText('View API request · cost unavailable'));
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh main ideas' }));
+  await waitFor(() => assert.equal(generationBodies.length, 4));
   fireEvent.click(screen.getByRole('button', { name: 'Flashcards' }));
   await screen.findByRole('button', { name: 'Reveal answer' });
   cleanup();
@@ -141,6 +157,7 @@ test('sources are optional within the space workspace', async () => {
     await screen.findByText('No spaces match your search.');
     fireEvent.change(spaceSearch, { target: { value: 'data' } });
     fireEvent.click(screen.getByRole('button', { name: /^Databases.*document$/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Quiz' }));
     await screen.findByText(/What does an index help\?/);
     assert.equal(screen.queryByRole('button', { name: /notes.txt/ }), null);
     fireEvent.click(screen.getByRole('button', { name: 'Sources (1)' }));
@@ -193,10 +210,28 @@ test('more than six documents can generate when total characters stay within the
   try {
     render(<StudyApp />);
     fireEvent.click(await screen.findByRole('button', { name: /^Databases.*documents$/ }));
-    assert.equal((await screen.findByRole('button', { name: 'Generate quiz' })).hasAttribute('disabled'), false);
+    fireEvent.click(await screen.findByRole('button', { name: 'Quiz' }));
+    assert.equal((await screen.findByRole('button', { name: 'New quiz' })).hasAttribute('disabled'), false);
     fireEvent.click(screen.getByRole('button', { name: 'Sources (7)' }));
     assert.ok(await screen.findByText(/7 active documents/));
     assert.equal(screen.queryByRole('alert'), null);
+  } finally {
+    cleanup();
+    window.history.replaceState(null, '', '/');
+  }
+});
+
+test('source count limits disable only formats that cannot cover the selection', async () => {
+  const space = fixture(); mockApi(space);
+  for (let index = 2; index <= 11; index++) space.documents.push({ id: `doc-${index}`, name: `source-${index}.txt`, text: 'A useful source sentence. '.repeat(5), createdAt: '2026-01-01T00:00:00Z' });
+  try {
+    render(<StudyApp />);
+    fireEvent.click(await screen.findByRole('button', { name: /^Databases.*documents$/ }));
+    assert.ok(await screen.findByText(/A quiz can cover at most 10 sources/));
+    fireEvent.click(screen.getByRole('button', { name: 'Quiz' }));
+    assert.equal(screen.getByRole('button', { name: 'New quiz' }).hasAttribute('disabled'), true);
+    fireEvent.click(screen.getByRole('button', { name: 'Flashcards' }));
+    assert.equal(screen.getByRole('button', { name: 'New deck' }).hasAttribute('disabled'), false);
   } finally {
     cleanup();
     window.history.replaceState(null, '', '/');
@@ -212,9 +247,14 @@ test('learners can focus generation on selected sources and see saved coverage',
   mockApi(space);
   const originalFetch = globalThis.fetch;
   const generationBodies: unknown[] = [];
+  const deckBodies: unknown[] = [];
   globalThis.fetch = async (input, init) => {
     if (String(input).endsWith('/runs') && init?.method === 'POST') {
       generationBodies.push(JSON.parse(String(init.body)));
+      return respond({ saved: true });
+    }
+    if (String(input).endsWith('/decks') && init?.method === 'POST') {
+      deckBodies.push(JSON.parse(String(init.body)));
       return respond({ saved: true });
     }
     return originalFetch(input, init);
@@ -222,12 +262,18 @@ test('learners can focus generation on selected sources and see saved coverage',
   try {
     render(<StudyApp />);
     fireEvent.click(await screen.findByRole('button', { name: /^Databases.*documents$/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Quiz' }));
     assert.ok(await screen.findByText(/Questions cover 1 of 2 selected sources.*Not covered: transactions.txt/));
     fireEvent.click(screen.getByRole('button', { name: /Choose sources/ }));
     fireEvent.click(screen.getByRole('checkbox', { name: 'notes.txt' }));
     assert.equal((screen.getByRole('checkbox', { name: 'notes.txt' }) as HTMLInputElement).checked, false);
     fireEvent.click(screen.getByRole('button', { name: 'New quiz' }));
     await waitFor(() => assert.deepEqual(generationBodies, [{ documentIds: ['doc-2'] }]));
+    fireEvent.click(screen.getByRole('button', { name: 'Flashcards' }));
+    assert.equal(screen.queryByRole('button', { name: 'New quiz' }), null);
+    await waitFor(() => assert.equal(screen.getByRole('button', { name: 'New deck' }).hasAttribute('disabled'), false));
+    fireEvent.click(screen.getByRole('button', { name: 'New deck' }));
+    await waitFor(() => assert.deepEqual(deckBodies, [{ documentIds: ['doc-2'] }]));
   } finally {
     cleanup();
     window.history.replaceState(null, '', '/');

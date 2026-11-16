@@ -30,7 +30,7 @@ test('a study space keeps documents, quizzes, and locally graded answers after a
     assert.equal(requestBody.store, false);
     assert.ok(requestBody.input.includes(source.slice(0, 50)));
     assert.equal(requestBody.text.format.name, 'study_quiz');
-    assert.deepEqual(requestBody.text.format.schema.required, ['overview', 'questions']);
+    assert.deepEqual(requestBody.text.format.schema.required, ['questions']);
     assert.ok(requestBody.text.format.schema.properties.questions.items.properties.sourceId.enum.includes(3));
     const question = (id) => ({ text: `What does index idea ${id} mean?`,
       optionA: 'Faster reads', optionB: 'Faster writes', optionC: 'No storage', optionD: 'No planner',

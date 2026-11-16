@@ -27,13 +27,19 @@ test('space generation snapshots all documents and cites each source document', 
     if (!String(url).startsWith('https://api.openai.com/')) return originalFetch(url, options);
     calls++;
     const input = JSON.parse(options.body);
-    assert.match(input.input, /indexes\.md/);
-    assert.match(input.input, /transactions\.md/);
+    const coverage = input.text.format.name.includes('source_coverage');
     const question = (id) => ({ text: `Question ${id}`, optionA: 'Yes', optionB: 'No', optionC: 'Maybe', optionD: 'Unknown', correctOption: 'A', explanation: 'Supported by the source.', sourceId: id });
     const card = (id) => ({ front: `Card ${id}`, back: 'Supported by the source.', sourceId: id === 1 ? 1 : 2 });
-    const output = input.text.format.name === 'study_quiz'
-      ? { overview: 'Indexes and transactions support database work.', questions: [question(1), question(2), question(2)].map((item, index) => ({ ...item, text: `Question ${index + 1}` })) }
-      : { cards: [card(1), card(2), card(3), card(4), card(5)] };
+    const isQuiz = input.text.format.name.includes('quiz');
+    const output = coverage
+      ? Object.fromEntries(Object.entries(input.text.format.schema.properties).map(([key, schema]) => {
+        const sourceName = new RegExp(`${key} = ([^;\\n]+)`).exec(input.input)?.[1];
+        const sourceId = schema.properties.sourceId.enum[0];
+        return [key, isQuiz ? { ...question(sourceId), text: `Question ${sourceName}`, sourceId }
+          : { ...card(sourceId), front: `Card ${sourceName}`, sourceId }];
+      }))
+      : isQuiz ? { questions: [question(1), question(2), question(2)].map((item, index) => ({ ...item, text: `Question ${index + 1}` })) }
+        : { cards: [card(1), card(2), card(3), card(4), card(5)] };
     return new Response(JSON.stringify({ status: 'completed', output: [{ content: [{ type: 'output_text', text: JSON.stringify(output) }] }] }), { status: 200 });
   };
   await new Promise((resolve) => server.listen(0, resolve));
@@ -49,8 +55,8 @@ test('space generation snapshots all documents and cites each source document', 
     const deck = await request(base, `/api/spaces/${spaceId}/decks`, {});
     assert.equal(quiz.status, 200);
     assert.equal(deck.status, 200);
-    assert.deepEqual(quiz.body.questions.map((item) => item.documentId), [firstId, secondId, secondId]);
-    assert.deepEqual(deck.body.cards.map((item) => item.documentId), [firstId, secondId, secondId, secondId, secondId]);
+    assert.equal(new Set(quiz.body.questions.map((item) => item.documentId)).size, 7);
+    assert.equal(new Set(deck.body.cards.map((item) => item.documentId)).size, 7);
     const added = await request(base, `/api/spaces/${spaceId}/documents`, { name: 'third.md', text: first });
     assert.equal(added.status, 201);
     const saved = (await request(base, `/api/spaces/${spaceId}`)).body.space;
@@ -59,7 +65,7 @@ test('space generation snapshots all documents and cites each source document', 
     assert.equal(saved.decks[0].documentIds.length, 7);
     assert.deepEqual(saved.decks[0].documentIds.slice(0, 2), [firstId, secondId]);
     assert.equal(saved.runs[0].documentId, undefined);
-    assert.equal(calls, 3);
+    assert.equal(calls, 4);
     const removed = await originalFetch(`${base}/api/spaces/${spaceId}/documents/${firstId}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ removed: true }),
     });
@@ -70,7 +76,7 @@ test('space generation snapshots all documents and cites each source document', 
     assert.equal(after.decks.length, 1);
     assert.equal((await request(base, '/api/spaces')).body.spaces[0].documentCount, 7);
     assert.equal((await request(base, `/api/spaces/${spaceId}/runs`, { documentId: firstId })).status, 400);
-    assert.equal(calls, 3);
+    assert.equal(calls, 4);
     const restored = await originalFetch(`${base}/api/spaces/${spaceId}/documents/${firstId}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ removed: false }),
     });

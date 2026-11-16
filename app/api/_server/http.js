@@ -28,6 +28,7 @@ export async function modelResult(generated, validate, save = async () => {}) {
   try { checked = validate(output); }
   catch (error) { return json(422, { error: error.message, ...details }); }
   const result = { ...checked, ...details };
-  await save(result);
+  const saved = await save(result);
+  if (saved instanceof Response) return saved;
   return json(200, result);
 }
