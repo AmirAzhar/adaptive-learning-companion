@@ -1,12 +1,12 @@
 # Study-space capacity evaluation plan
 
-Status: proposed evaluation, not yet run. This document records how to choose a source-size and generation configuration for Main ideas, Quiz, and Flashcards. It does not change the current limits.
+Status: proposed **40K versus 100K pilot**, not yet run. This document records how to compare source-size and model choices for Main ideas, Quiz, and Flashcards. It does not change the current limits.
 
 For running the cases one at a time across chats, use the reusable prompt in [EVALUATION_RUNNER_PROMPT.md](EVALUATION_RUNNER_PROMPT.md).
 
 ## Decision to make
 
-Choose the largest practical amount of active source text a study space can use while generating accurate, useful, and reasonably complete study material at an acceptable cost and wait time. Decide separately how many questions or cards belong in one study session. A space may need multiple sessions to cover its material.
+Determine whether increasing active source text from about 40,000 to about 100,000 characters preserves accurate, useful study material at an acceptable cost and wait time. Compare the current model with one stronger candidate at both sizes. This pilot can support or reject a 100K direction; it cannot identify the maximum practical size or prove that one quiz/deck fully covers a large space.
 
 The model's context window is a technical capacity, not a quality target. There is no assumed optimal percentage of that window. Character counts are useful for the interface, but the evaluation must record the actual token count of each complete API request, including instructions, source blocks, and schema. Leave room for the response.
 
@@ -22,48 +22,49 @@ The default model advertises a [128,000-token context window and 16,384-token ma
 
 ## Model chosen for comparison
 
-Compare the current `gpt-4o-mini` baseline with **`gpt-6.1-sol` at `reasoning.effort: "medium"`**. This is the proposed stronger-model candidate, not a claim that it will score better on this app's material. Fix the effort for all Sol runs; record the returned model version and all reasoning/output tokens. Check account access and run one isolated structured-output compatibility request before the full matrix. The app's current cost estimator only handles `gpt-4o-mini`, so the evaluation harness must calculate Sol costs from reported usage and current pricing. The existing 30-second quiz/card and 90-second summary timeouts may need separate evaluation settings; any timeout change must be recorded and compared fairly.
+Compare the current `gpt-4o-mini` baseline with **`gpt-6.1-terra` at `reasoning.effort: "medium"`**. This is a candidate to test, not a claim that it will score better on this app's material. OpenAI's [model-selection guidance](https://developers.openai.com/api/docs/guides/model-selection) specifically suggests Terra for concise writing based on supplied material, which is close to this app's grounded summaries and study items. It costs half as much per input and output token as Sol. Fix the effort for all Terra runs; record the returned model version and all reasoning/output tokens. Check account access and run one isolated structured-output compatibility request before the pilot. The app's current cost estimator only handles `gpt-4o-mini`, so the evaluation harness must calculate Terra costs from reported usage and current pricing. The existing 30-second quiz/card and 90-second summary timeouts may need separate evaluation settings; any timeout change must be recorded and compared fairly.
 
-The [current general-purpose model catalog](https://developers.openai.com/api/docs/models) lists Luna for cost-sensitive volume, Terra for visual reasoning and writing, Sol for complex work at a lower cost than Astra, and Astra for the most demanding work. All four support the [Responses API and structured outputs](https://developers.openai.com/api/docs/models/compare). At standard API rates per million uncached input/output tokens, the relevant options are:
+The [general-purpose model catalog](https://developers.openai.com/api/docs/models) and individual model pages show the following standard API rates per million uncached input/output tokens. All listed candidates support the Responses API and structured outputs. Selection is based on task fit and price, not release date alone.
 
 | Model | Context window | Input / output USD per million tokens | Role in this evaluation |
 | --- | ---: | ---: | --- |
 | [`gpt-4o-mini`](https://developers.openai.com/api/docs/models/gpt-4o-mini) | 128K tokens | $0.15 / $0.60 | Existing baseline; the catalog marks it deprecated. |
-| [`gpt-6-luna`](https://developers.openai.com/api/docs/models/gpt-6-luna) | 1.05M tokens | $0.10 / $0.50 | Low-cost alternative, but a larger window alone does not establish better study quality. |
-| [`gpt-6.1-terra`](https://developers.openai.com/api/docs/models/gpt-6.1-terra) | 1.05M tokens | $1 / $5 | Plausible writing-focused candidate, but less direct as the single stronger-model comparison. |
-| [`gpt-6.1-sol`](https://developers.openai.com/api/docs/models/gpt-6.1-sol) | 1.05M tokens | $2 / $10 | Chosen candidate to test complex, multi-document synthesis and question quality. |
+| [`gpt-6-luna`](https://developers.openai.com/api/docs/models/gpt-6-luna) | 1.05M tokens | $0.10 / $0.50 | Cheapest option; positioned for focused, high-volume tasks. Consider later if Terra's quality passes and lower cost is still needed. |
+| [`gpt-5.6-luna`](https://developers.openai.com/api/docs/models/gpt-5.6-luna) | 1.05M tokens | $0.20 / $1.20 | Cost-sensitive older option, but priced above GPT-6 Luna. |
+| [`gpt-5.6-terra`](https://developers.openai.com/api/docs/models/gpt-5.6-terra) | 1.05M tokens | $2 / $12 | Balance tier, but priced above GPT-6.1 Terra. |
+| [`gpt-6.1-terra`](https://developers.openai.com/api/docs/models/gpt-6.1-terra) | 1.05M tokens | $1 / $5 | **Chosen:** task-relevant writing model at half Sol's price. |
+| [`gpt-6-sol`](https://developers.openai.com/api/docs/models/gpt-6-sol) | 1.05M tokens | $2 / $10 | Same listed input/output price as GPT-6.1 Sol; no cost saving. |
+| [`gpt-5.6-sol`](https://developers.openai.com/api/docs/models/gpt-5.6-sol) | 1.05M tokens | $4 / $20 | More expensive than either Sol option. |
+| [`gpt-6.1-sol`](https://developers.openai.com/api/docs/models/gpt-6.1-sol) | 1.05M tokens | $2 / $10 | Stronger-tier fallback if Terra fails the quality bar. |
 | [`gpt-6-astra`](https://developers.openai.com/api/docs/models/gpt-6-astra) | 1.05M tokens | $10 / $50 | Flagship quality reference; five times Sol's listed input/output price, so not the first candidate for this prototype. |
 
-These are published standard rates, not measured costs for this app. As an illustration, a call with 25K uncached input tokens and 2K billed output tokens would cost about **$0.00495** on mini or **$0.07** on Sol before retries or other pricing adjustments. Sol may use reasoning tokens that increase billed output. Judge the models by measured quality, total cost per usable study set, and latency, not by context size or list price alone. Specialized image, audio, embedding, moderation, and coding models are outside this text-generation comparison; older general-purpose families remain available in the catalog but are not needed for the first two-model test.
+These are published standard rates, not measured costs for this app. As an illustration, a call with 25K uncached input tokens and 2K billed output tokens would cost about **$0.00495** on mini or **$0.035** on Terra before retries or other pricing adjustments. Terra may use reasoning tokens that increase billed output. Judge the models by measured quality, total cost per usable study set, and latency, not by context size or list price alone. Specialized image, audio, embedding, moderation, and coding models are outside this text-generation comparison.
 
-## Experimental variables
+## Pilot variables and controls
 
-| Variable | Candidate comparisons | Question answered |
+| Variable | Pilot setting | Question answered |
 | --- | --- | --- |
-| Input size | About 10K, 25K, 40K, 70K, and 100K characters; log actual request tokens | Where do quality, failures, latency, and cost change? |
-| Model | Current `gpt-4o-mini` and `gpt-6.1-sol` at medium reasoning effort | Does a model change improve quality enough to justify its total cost? |
-| Processing | Current whole-selection call; per-document or per-section concept extraction followed by synthesis and item generation | Does staged processing preserve coverage better at larger sizes? |
-| Output policy | Current 10-question/20-card result; more items split across manageable study sessions | Is low coverage caused by reading the source or by limited output space? |
-| Source arrangement | Vary document count, topic mixture, and the position of important concepts | Are middle sections or particular documents neglected? |
+| Input size | About 40K versus 100K characters; log actual request tokens | What changes when the same source set grows to 100K? |
+| Model | Current `gpt-4o-mini` and `gpt-6.1-terra` at medium reasoning effort | Does a model change improve quality enough to justify its total cost? |
+| Processing | Hold the current whole-selection request method fixed | Isolate size and model effects. |
+| Output policy | Hold the current 10-question/20-card caps fixed | Measure today's single-result behavior; interpret low coverage in light of the fixed caps. |
+| Source arrangement | Hold five document IDs and their order fixed within each set; use three subject sets | Compare nested source text while checking source and position balance. |
 
-Change one major variable at a time after a baseline, rather than running every combination. Sizes above the current 40K limit require an isolated evaluation harness or temporary test configuration; they must not silently change product behavior or saved study data. The 20K per-document upload limit also remains a separate constraint to account for.
+The 100K cases require an isolated evaluation harness; they must not silently change product behavior or saved study data. Keep each document at or below the current 20K upload limit. Staged processing, retrieval, additional study sessions, other sizes, and additional models are **outside this pilot**. They can be considered after reviewing its results.
 
 ### Concrete test matrix and count
 
-For the first evaluation, hold the document count at **five per source set** so input size does not also change the number of documents. Use nested versions of each document: approximately 2K, 5K, 8K, 14K, and 20K characters per document, producing total sizes of **10K, 25K, 40K, 70K, and 100K**. Keep document order fixed within a source set. Use `gpt-6.1-sol` at medium reasoning effort as the stronger-model candidate and record the returned model version. Do not substitute a different model halfway through.
+Hold the document count at **five per source set** so input size does not also change the number of documents. Use the already prepared nested variants of approximately 8K and 20K characters per document, yielding about **40K and 100K total**. Record actual character and request-token counts. Keep document order fixed within each set. Use `gpt-6.1-terra` at medium reasoning effort as the comparison model and record the returned model version.
 
-| Stage | Model | Processing | Output policy | Sizes | Distinct configurations |
-| --- | --- | --- | --- | --- | ---: |
-| 1: current method | `gpt-4o-mini` | Whole-selection call | Current 10-question/20-card caps | 10K, 25K, 40K, 70K, 100K | 5 |
-| 1: model comparison | `gpt-6.1-sol` (medium effort) | Whole-selection call | Same caps | Same five sizes | 5 |
-| 2: processing comparison | `gpt-4o-mini` | Section/document extraction, then generation | Same caps | 40K, 70K, 100K | 3 |
-| 2: processing comparison | `gpt-6.1-sol` (medium effort) | Same staged processing | Same caps | 40K, 70K, 100K | 3 |
-| 3: output comparison | Best qualifying model and processing method from stages 1–2 | As selected | Additional quiz/deck sessions to cover more concepts | 70K, 100K | 2 |
-| **Maximum planned total** | | | | | **18** |
+| Model | Processing | Output policy | Sizes | Distinct configurations |
+| --- | --- | --- | --- | ---: |
+| `gpt-4o-mini` | Whole-selection call | Current caps | 40K, 100K | 2 |
+| `gpt-6.1-terra` (medium effort) | Whole-selection call | Current caps | 40K, 100K | 2 |
+| **Pilot total** | | | | **4** |
 
-Stages 2 and 3 are follow-ups; run them where the prior results justify them. Stage 3 compares against the matching capped-output case already run, so its two configurations are the only new ones. If no configuration qualifies, record that result and investigate before expanding the matrix. The number of additional sessions in stage 3 must be set in advance, not chosen after seeing a particular output.
+With three source sets (**frontend**, **Java**, and **systems/AWS**) and **one initial run** of each configuration, the pilot is `4 × 3 = 12` case runs. Each run requests Main ideas, Quiz, and Flashcards, giving **36 format results** plus any coverage-repair calls. This single repetition is exploratory; it cannot establish a reliable success rate. If results are close or inconsistent, decide on a second repetition before drawing a final conclusion. A second repetition would add 12 runs and 36 format results, but is not in the initial queue.
 
-With the three selected source sets (**frontend**, **Java**, and **systems/AWS**) and **two repetitions** of each configuration, the full 18-configuration plan means `18 × 3 × 2 = 108` case runs. Each run requests Main ideas, Quiz, and Flashcards, for **324 format results**, plus any repair/retry API calls. Stage 1 alone is **10 configurations, 60 case runs, and 180 format results**. These are proposed counts, not completed tests. Source sets and repetitions increase evidence; they do not create new configuration types.
+Run paired cases on the same source set, with the same five document IDs and order. Compare 40K versus 100K within each model first, then compare models at the same size. Do not choose a configuration from a single attractive example.
 
 ## Test material and reference answers
 
@@ -73,7 +74,7 @@ These selected notes are candidate material, not yet a human-approved gold set. 
 
 For each set, have a human identify the high-priority concepts, their supporting passages, and any cross-document relationships before seeing generated output. Include important ideas near the beginning, middle, and end. Keep the reference list fixed across model comparisons. Review source claims carefully: grounding to a study note is distinct from independent factual correctness of that note.
 
-Run each tested configuration more than once. Review generated results without displaying the model or configuration to the reviewer. Keep source material, prompts, output policy, and scoring rubric identical when comparing models. Record model versions and request parameters so results remain interpretable if an API model alias changes.
+The pilot starts with one run per configuration and source set. Review generated results without displaying the model or configuration to the reviewer. Keep source material, prompts, output policy, and scoring rubric identical when comparing models. Record model versions and request parameters so results remain interpretable if an API model alias changes. Repeat paired cases if the initial signal is too uncertain to support a decision.
 
 ## Measures
 
@@ -97,7 +98,7 @@ Cost per concept is a comparison measure, not a goal to minimize at the expense 
 
 ## Required output from each evaluation case
 
-A **configuration** is one combination of input size, model, processing method, and output policy from the test matrix. A **case** is one run of that configuration on a particular source set and repetition. Its **case ID** is a unique, readable identifier for that run, used to group its output files and link them to the comparison report. For example, `tech-40k-sol-whole-capped-r2` means the technical source set, 40K characters, Sol, whole-selection processing, current output caps, repetition 2. The case ID is only a label; `manifest.json` holds the exact model ID, token count, source hashes, and other details. An agent running a case must produce the same artifacts for all three formats. Keep raw artifacts under `data/evaluation/<case-id>/` (the repository already ignores `data/`); do not include API keys. A later comparison report can be added to the repository with only non-confidential aggregates and examples.
+A **configuration** is one combination of input size, model, processing method, and output policy from the test matrix. A **case** is one run of that configuration on a particular source set and repetition. Its **case ID** is a unique, readable identifier for that run, used to group its output files and link them to the comparison report. For example, `frontend-40k-terra-whole-capped-r1` means the frontend source set, 40K characters, Terra, whole-selection processing, current output caps, first run. The case ID is only a label; `manifest.json` holds the exact model ID, token count, source hashes, and other details. An agent running a case must produce the same artifacts for all three formats. Keep raw artifacts under `data/evaluation/<case-id>/` (the repository already ignores `data/`); do not include API keys. A later comparison report can be added to the repository with only non-confidential aggregates and examples.
 
 | Artifact | Required contents |
 | --- | --- |
@@ -109,16 +110,16 @@ A **configuration** is one combination of input size, model, processing method, 
 
 Agent-generated judgments can be useful preliminary scores, but label them as agent review. If the reference concepts or factual/usefulness scores have not had the planned human review, mark the case **provisional**. An agent must not claim that generated material improved learning; this evaluation measures output quality only.
 
-After all cases, produce one comparison report with a row per configuration and size. Show the number of repetitions, median and range of coverage, accuracy, usefulness, reliability, latency, and total cost; include source-position gaps and the cost per accurate high-priority concept. Identify configurations that fail pre-agreed thresholds, the best tradeoffs among those that pass, and any uncertainty or missing cost/review data. Keep the raw counts visible so a percentage from a tiny sample is not mistaken for strong evidence.
+After all cases, produce one comparison report with a row per model and size. Show each source set's coverage, accuracy, usefulness, success/failure, latency, and total cost; include source-position gaps and cost per accurate high-priority concept. Summarize across the three sets while keeping their raw counts visible. Identify configurations that fail pre-agreed thresholds and any uncertainty or missing cost/review data. One run per source set does not support a precise reliability estimate.
 
 ## Suggested sequence
 
-1. Establish a baseline with the current model and whole-selection method at increasing sizes. Keep the existing output caps initially to measure the current product, then separately test additional study sessions so output capacity does not masquerade as a context problem.
-2. At sizes where coverage, correctness, or reliability worsens, compare a stronger model using the same inputs and output policy.
-3. Compare staged per-section or per-document processing at those same sizes and models. Measure whether it recovers concepts from neglected positions and whether its extra calls are worth their cost.
-4. Select the largest configuration that meets pre-agreed quality and reliability thresholds within an acceptable total cost and wait time. Record the thresholds before scoring results; do not choose them after seeing which configuration wins.
+1. Fix reference concepts, review the selected source text, and set pilot quality and cost thresholds before any paid calls.
+2. Run mini at 40K and 100K on the three source sets, then Terra at the same two sizes. Keep processing, output caps, source order, and review rubric fixed.
+3. Compare the paired results for each set and format, including failures, latency, tokens, and cost. Separate source-size effects from model effects.
+4. Decide whether the 100K direction is promising, needs a second repetition, or needs a different generation method before changing the app limit.
 
-The final decision may specify a space storage limit, a separate per-generation token budget, a threshold for switching to staged processing, and a per-session item count. Do not infer learning improvement from output quality alone; learner testing remains a separate evaluation.
+Do not infer learning improvement from output quality alone; learner testing remains a separate evaluation. This pilot does not choose an ultimate space-size ceiling or a new per-session item count.
 
 ## Results log
 
