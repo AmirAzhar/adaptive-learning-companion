@@ -28,8 +28,6 @@ export default function StudyApp() {
   const [notice, setNotice] = useState<Notice | null>(null);
   const [failures, setFailures] = useState<{ kind: Kind; error: AppError }[]>([]);
   const [busy, setBusy] = useState(false);
-  const [sourcePickerOpen, setSourcePickerOpen] = useState(false);
-  const [selectedSourceIds, setSelectedSourceIds] = useState<string[] | null>(null);
   const [view, setView] = useState<View>('spaces');
 
   function report(error: unknown) {
@@ -62,7 +60,7 @@ export default function StudyApp() {
         const [spaceId, documentId] = decodeURIComponent(window.location.hash.slice(1)).split('/');
         const chosen = result.spaces.find(item => item.id === spaceId);
         if (chosen) {
-          setSelectedSourceIds(null); setSourcePickerOpen(false); setMode('summary');
+          setMode('summary');
           const found = await api<{ space: Space }>(`/api/spaces/${chosen.id}`);
           if (!active) return;
           applySpace(found.space);
@@ -79,7 +77,7 @@ export default function StudyApp() {
 
   async function selectSpace(id: string) {
     try {
-      setSelectedSourceIds(null); setSourcePickerOpen(false); setMode('summary');
+      setMode('summary');
       await openSpace(id);
       setSourcesOpen(false);
       setView('study');
@@ -92,7 +90,7 @@ export default function StudyApp() {
   }
   async function createSpace(title: string) {
     try {
-      setSelectedSourceIds(null); setSourcePickerOpen(false); setMode('summary');
+      setMode('summary');
       const result = await api<{ space: Space }>('/api/spaces', { title });
       await openSpace(result.space.id);
       setSourcesOpen(true); setView('study'); window.location.hash = result.space.id;
@@ -164,13 +162,12 @@ export default function StudyApp() {
   async function generate(kinds: Kind[]) {
     if (!space || space.archivedAt || !canGenerate || busy || !kinds.length) return;
     const spaceId = space.id;
-    const selection = selectedSourceIds === null ? {} : { documentIds: selectedDocuments.map(document => document.id) };
     const requested: Kind[] = [...kinds, ...(!summaryCurrent && activeCharacters <= 40000 ? ['summary' as Kind] : [])];
     setBusy(true); setFailures([]); setNotice(null);
     try {
       const results = await Promise.allSettled(requested.map(kind => api(
         `/api/spaces/${spaceId}/${kind === 'quiz' ? 'runs' : kind === 'flashcards' ? 'decks' : 'summary'}`,
-        kind === 'summary' ? {} : selection)));
+        {})));
       if (results.some((result, index) => result.status === 'fulfilled' && requested[index] === 'quiz')) setSelectedRunId(null);
       if (results.some((result, index) => result.status === 'fulfilled' && requested[index] === 'flashcards')) setSelectedDeckId(null);
       if (kinds.length === 1) setMode(kinds[0] === 'quiz' ? 'quiz' : 'cards');
@@ -195,11 +192,9 @@ export default function StudyApp() {
   const activeCharacters = activeDocuments.reduce((total, document) => total + document.text.length, 0);
   const summaryCurrent = Boolean(space?.summary && space.summary.documentIds.length === activeDocuments.length &&
     activeDocuments.every((document, index) => space.summary?.documentIds[index] === document.id));
-  const selectedDocuments = selectedSourceIds === null ? activeDocuments : activeDocuments.filter(document => selectedSourceIds.includes(document.id));
-  const selectedCharacters = selectedDocuments.reduce((total, document) => total + document.text.length, 0);
-  const canGenerate = Boolean(selectedDocuments.length && !space?.archivedAt && selectedCharacters <= 40000);
-  const canGenerateQuiz = canGenerate && selectedDocuments.length <= 10;
-  const canGenerateDeck = canGenerate && selectedDocuments.length <= 20;
+  const canGenerate = Boolean(activeDocuments.length && !space?.archivedAt && activeCharacters <= 40000);
+  const canGenerateQuiz = canGenerate && activeDocuments.length <= 10;
+  const canGenerateDeck = canGenerate && activeDocuments.length <= 20;
   const initialKinds: Kind[] = [!hasQuiz && 'quiz', !hasDeck && 'flashcards'].filter(Boolean) as Kind[];
 
   return <>
@@ -211,23 +206,18 @@ export default function StudyApp() {
         <div id="status" role="status" aria-live="polite">{notice?.text && <p>{notice.text}</p>}{notice?.details && <RequestDetails result={notice.details} />}{failures.map((item, index) => <div key={index}><p>{item.kind}: {item.error.message}</p><RequestDetails result={item.error.details} /></div>)}</div>
         {view === 'spaces' && <SpacesLibrary spaces={spaces} onSpace={selectSpace} onCreateSpace={createSpace} onRename={renameSpace} onArchive={archiveSpace} onRestore={restoreSpace} onDelete={deleteSpace} />}
         {view === 'study' && space && <section id="space" aria-labelledby="active-document-name">
-            <div className="study-navigation"><Button variant="text" onClick={showSpaces}>← All spaces</Button><Button variant="outlined" aria-expanded={sourcesOpen} aria-controls="sources-panel" onClick={() => setSourcesOpen(!sourcesOpen)}>Sources ({activeDocuments.length})</Button></div>
+            <div className="study-navigation"><Button variant="text" onClick={showSpaces}>← All spaces</Button></div>
           <Paper className="workspace-header panel" variant="outlined">
             <div className="workspace-title-row"><div>
               <h1 id="active-document-name">{space.title}</h1>
-              <p id="document-meta" className="document-summary">{space.archivedAt ? 'Archived · view only' : activeDocuments.length ? `${activeDocuments.length} source ${activeDocuments.length === 1 ? 'document' : 'documents'}` : 'Add a source document to start studying'}</p>
-            </div><SpaceActions space={{ id: space.id, title: space.title, archivedAt: space.archivedAt, documentCount: activeDocuments.length, runCount: space.runs.length, deckCount: space.decks?.length ?? 0 }} onRename={renameSpace} onArchive={archiveSpace} onRestore={restoreSpace} onDelete={deleteSpace} /></div>
-            <form id="run-form" className="generation-area" onSubmit={event => { event.preventDefault(); generate(initialKinds); }}>
-              <p className="generation-note">{space.archivedAt ? 'Restore this space to generate new study material.' : `Uses ${selectedSourceIds === null ? 'all active' : 'selected'} source documents. Each format starts a separate AI request and may request missing sources. Limit: 40,000 characters total.`}{Boolean(selectedDocuments.length) && !space.archivedAt && selectedCharacters > 40000 && ' The selected sources exceed the generation limit.'}</p>
-              {activeDocuments.length > 1 && <><Button type="button" variant="text" className="source-picker-toggle" aria-expanded={sourcePickerOpen} aria-controls="generation-sources" onClick={() => setSourcePickerOpen(!sourcePickerOpen)}>{sourcePickerOpen ? 'Hide source selection' : `Choose sources · ${selectedDocuments.length} of ${activeDocuments.length}`}</Button>
-                {sourcePickerOpen && <fieldset id="generation-sources" className="generation-sources"><legend>Sources for the next quiz or deck</legend>
-                  {activeDocuments.map(document => <label key={document.id}><input type="checkbox" checked={selectedSourceIds === null || selectedSourceIds.includes(document.id)} onChange={() => { const current = selectedSourceIds ?? activeDocuments.map(item => item.id); setSelectedSourceIds(current.includes(document.id) ? current.filter(id => id !== document.id) : [...current, document.id]); }} />{document.name}</label>)}
-                  <Button type="button" size="small" onClick={() => setSelectedSourceIds(null)}>Use all sources</Button>
-                </fieldset>}</>}
-              {selectedDocuments.length > 10 && <p className="sources-coverage">A quiz can cover at most 10 sources. Choose fewer sources.</p>}
-              {selectedDocuments.length > 20 && <p className="sources-coverage">A deck can cover at most 20 sources. Choose fewer sources.</p>}
+              {space.archivedAt && <p id="document-meta" className="document-summary">Archived · view only</p>}
+            </div><div className="workspace-header-actions"><Button variant="outlined" aria-expanded={sourcesOpen} aria-controls="sources-panel" onClick={() => setSourcesOpen(!sourcesOpen)}>Sources ({activeDocuments.length})</Button><SpaceActions space={{ id: space.id, title: space.title, archivedAt: space.archivedAt, documentCount: activeDocuments.length, runCount: space.runs.length, deckCount: space.decks?.length ?? 0 }} onRename={renameSpace} onArchive={archiveSpace} onRestore={restoreSpace} onDelete={deleteSpace} /></div></div>
+            {(space.archivedAt || activeDocuments.length > 10 || initialKinds.length === 2) && <form id="run-form" className="generation-area" onSubmit={event => { event.preventDefault(); generate(initialKinds); }}>
+              {space.archivedAt && <p className="generation-note">Restore this space to generate new study material.</p>}
+              {activeDocuments.length > 10 && <p className="source-coverage">A quiz can cover at most 10 sources. Remove sources in Sources to generate a new quiz.</p>}
+              {activeDocuments.length > 20 && <p className="source-coverage">A deck can cover at most 20 sources. Remove sources in Sources to generate a new deck.</p>}
               {initialKinds.length === 2 && <div className="generation-actions"><Button id="start" type="submit" disabled={!canGenerateQuiz || !canGenerateDeck || busy}>Generate quiz and flashcards</Button></div>}
-            </form>
+            </form>}
           </Paper>
           <Drawer anchor="right" open={sourcesOpen} onClose={() => setSourcesOpen(false)} className="sources-drawer" slotProps={{ paper: { role: 'dialog', 'aria-labelledby': 'sources-title' } }}>
             <SourcesPanel key={space.id} space={space} readOnly={Boolean(space.archivedAt)} onAddDocument={addDocument} onChangeDocument={changeDocument} onClose={() => setSourcesOpen(false)} />

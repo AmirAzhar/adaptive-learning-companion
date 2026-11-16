@@ -238,7 +238,7 @@ test('source count limits disable only formats that cannot cover the selection',
   }
 });
 
-test('learners can focus generation on selected sources and see saved coverage', async () => {
+test('generation uses all active sources and shows saved coverage', async () => {
   const space = fixture();
   space.documents.push({ id: 'doc-2', name: 'transactions.txt', text: 'A transaction groups related changes. '.repeat(5), createdAt: '2026-01-02T00:00:00Z' });
   const run = space.runs[0] as QuizRun;
@@ -262,18 +262,18 @@ test('learners can focus generation on selected sources and see saved coverage',
   try {
     render(<StudyApp />);
     fireEvent.click(await screen.findByRole('button', { name: /^Databases.*documents$/ }));
+    const sourcesButton = await screen.findByRole('button', { name: 'Sources (2)' });
+    assert.ok(sourcesButton.closest('.workspace-title-row'));
+    assert.equal(screen.queryByRole('button', { name: /Choose sources/ }), null);
     fireEvent.click(await screen.findByRole('button', { name: 'Quiz' }));
     assert.ok(await screen.findByText(/Questions cover 1 of 2 selected sources.*Not covered: transactions.txt/));
-    fireEvent.click(screen.getByRole('button', { name: /Choose sources/ }));
-    fireEvent.click(screen.getByRole('checkbox', { name: 'notes.txt' }));
-    assert.equal((screen.getByRole('checkbox', { name: 'notes.txt' }) as HTMLInputElement).checked, false);
     fireEvent.click(screen.getByRole('button', { name: 'New quiz' }));
-    await waitFor(() => assert.deepEqual(generationBodies, [{ documentIds: ['doc-2'] }]));
+    await waitFor(() => assert.deepEqual(generationBodies, [{}]));
     fireEvent.click(screen.getByRole('button', { name: 'Flashcards' }));
     assert.equal(screen.queryByRole('button', { name: 'New quiz' }), null);
     await waitFor(() => assert.equal(screen.getByRole('button', { name: 'New deck' }).hasAttribute('disabled'), false));
     fireEvent.click(screen.getByRole('button', { name: 'New deck' }));
-    await waitFor(() => assert.deepEqual(deckBodies, [{ documentIds: ['doc-2'] }]));
+    await waitFor(() => assert.deepEqual(deckBodies, [{}]));
   } finally {
     cleanup();
     window.history.replaceState(null, '', '/');
