@@ -1,4 +1,24 @@
-# Reusable sequential evaluation prompt
+# Reusable evaluation prompts
+
+## Review the completed pilot with sub-agents
+
+All twelve generation cases are complete. Copy this prompt into a new Codex chat to coordinate **agent review**. It explicitly authorizes review sub-agents; the sequential generation prompt below still applies only when running new paid cases. Agent scores are provisional and must never be recorded as human review.
+
+```text
+Coordinate agent review of the completed 40K-versus-100K pilot. Read AGENTS.md, README.md, CONTEXT.md, EVALUATION.md, and EVALUATION_RUNNER_PROMPT.md. The user authorizes sub-agents for review. Do not make OpenAI API generation calls, rerun cases, change product limits, or expose private corpus text in tracked files.
+
+First inspect data/evaluation/progress.json, pilot-controls.draft.json, reference-concepts.reviewed.json, pilot-comparison.md, and the twelve case directories. Verify the generated artifacts and identify which reviews are missing. Prepare review packets under ignored data/evaluation/review/ with anonymous IDs. Each packet must contain the relevant frozen source documents, approved reference concepts, generated Main ideas/Quiz/Flashcards, and the scoring rubric, while omitting case ID, model, size label, manifest, call logs, cost, and latency. Keep the packet-to-case mapping in a separate coordinator-only file. Make packets independently readable; do not tell a reviewer to browse the case directory. A reviewer may infer size from source length, so describe the blinding as partial. Check that packet contents have no model or case labels before dispatch.
+
+Spawn review sub-agents for independent packets. Give each agent only its assigned packet path and the rubric, and explicitly forbid reading the mapping, progress file, comparison, other packets, and case directories. Limit parallel work to available agent slots. Start with two independent agent reviews of the same packet from each of frontend, Java, and systems; use distinct output files per reviewer so they cannot overwrite one another. Compare their item-level and concept-level disagreements, resolve them against source passages, and record any rubric clarification before reviewing remaining packets. Then assign the other packets, again using separate output files and avoiding concurrent writes to shared state. Continue across chats from completed review files without repeating work.
+
+For each packet and each of the three formats, score every applicable approved reference concept as 0, 0.5, or 1; score every generated item for correctness/source support and usefulness (0–2); flag serious errors, wrong quiz keys, duplicates, and missing high-priority concepts. Cite packet item IDs, reference concept IDs, and source locations for errors and borderline calls. Calculate raw numerators and denominators, high-priority coverage, and coverage by document and source third. Follow EVALUATION.md and the approved thresholds; use null with a reason for anything not judged. Save each review and a short rationale under data/evaluation/review/ with reviewer type `agent` and status `provisional`. Never mark a case `human_reviewed`.
+
+After reviews are saved, the coordinator verifies completeness and arithmetic, unblinds using the private mapping, and updates case scores or a separate aggregate without destroying the original pending scores or individual reviews. Update progress.json reviewStatus to `provisionally_scored` only for cases with complete verified agent scores. Produce a paired comparison by source set, model, size, and format, showing coverage, correctness, usefulness, balance, reliability, latency, cost, and threshold outcomes. Preserve the unknown cost of the timed-out call; do not count it as zero. State disagreements and the limits of agent-only review. Recommend whether 100K warrants a product change, a repeat, or another generation method, but label the recommendation provisional. Do not change the app limit in this invocation.
+
+Report completed review IDs, unresolved disagreements, progress counts, and the next review task. If all reviews are complete, report the comparison and remaining decision instead. Make no paid API calls.
+```
+
+## Generate another case sequentially
 
 Copy the prompt below into a new Codex chat in this repository whenever you want to advance the study-space evaluation. Each invocation completes all setup work it can and then runs **at most one evaluation case**, saves its state, and ends. Reusing it does not restart completed cases.
 

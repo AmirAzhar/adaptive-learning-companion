@@ -1,6 +1,6 @@
 # Study-space capacity evaluation plan
 
-Status: proposed **40K versus 100K pilot**, not yet run. This document records how to compare source-size and model choices for Main ideas, Quiz, and Flashcards. It does not change the current limits.
+Status: the **40K versus 100K pilot** completed its twelve initial generation cases on 2026-11-17; agent quality scoring and final comparison decisions remain pending. This document records how to compare source-size and model choices for Main ideas, Quiz, and Flashcards. It does not change the current limits.
 
 For running the cases one at a time across chats, use the reusable prompt in [EVALUATION_RUNNER_PROMPT.md](EVALUATION_RUNNER_PROMPT.md).
 
@@ -123,4 +123,6 @@ Do not infer learning improvement from output quality alone; learner testing rem
 
 ## Results log
 
-No evaluation results yet. Record each run's source-set ID, source characters, complete request tokens, model/version, processing method, output policy, repetition number, scores above, call count, latency, total cost, and reviewer notes. Summarize the chosen configuration and its tradeoffs here after the evaluation.
+The twelve initial case runs across three frozen sets produced 36 structurally validated format results. The case artifacts and saved-artifact comparison are under ignored `data/evaluation/`; no private source or model output is committed. Mini needed ten coverage-repair calls and one manual retry after a timeout; Terra needed no repairs in these six cases. The twelve cases made 47 API attempts, plus one earlier Terra compatibility call. Known cumulative cost including that check is at least $0.45422685; actual cost remains unknown because the timed-out attempt returned no usage. The conservative stage budget ledger debits $2.44889735, including the approved reserve for the first case.
+
+Every case remains pending quality review. The user chose agent sub-reviewers for the initial comparison; their scores and recommendation must be labeled provisional, with independent overlap and disagreements recorded. The reusable review prompt is in `EVALUATION_RUNNER_PROMPT.md`. Concept coverage, factual correctness, usefulness, source-position balance, cost per accurate high-priority concept, and threshold decisions are unavailable until that scoring is done. These structural results do not select a configuration or justify changing the product limit. Resolve the unknown billed cost for an exact cost comparison. One run per set and configuration is exploratory; any second repetition needs a deliberate plan update.
