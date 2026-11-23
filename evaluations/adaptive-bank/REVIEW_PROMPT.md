@@ -1,0 +1,13 @@
+# Reusable adaptive-bank review prompt
+
+Use this after `build-review-packets.py` has made anonymous packets. Work on **one unreviewed packet per agent** so source text and a large item bank fit in context. The packet directory is under ignored `data/evaluation/experiments/adaptive-bank/review/A-*/`. A coordinator may give two independent agents the same 40K packet and the paired 100K packet to calibrate judgments; keep their original reviews separate. Review the remaining packets sequentially. Reviewers must not open `coordinator-map.json`, other packets, case manifests, or comparison files.
+
+```text
+Review the assigned adaptive-bank packet at <ABSOLUTE_PACKET_DIRECTORY>.
+
+Read RUBRIC.md, packet.json, and source.md. Inspect every generated item and every reference concept in this packet. Score concept coverage separately for mainIdeas, quiz, and flashcards, plus their union. For each generated item record correctness class, usefulness 0/1/2, duplicate/near-duplicate flag, and a short evidence note when there is an issue. Record item IDs supporting each nonzero concept score. Report raw numerators/denominators, high-priority coverage, source-third coverage, wrong quiz keys, minor and serious errors, and missing high-priority concepts. For a packet with zero reference concepts, set coverage to null with denominator zero; still review all generated items. Use null plus a reason for any unfinished judgment.
+
+Save review-<YOUR_ASSIGNED_REVIEWER_LABEL>.json using the exact JSON shape in RUBRIC.md, and review-<YOUR_ASSIGNED_REVIEWER_LABEL>.md with aggregate results and rationale. Run `python evaluations/adaptive-bank/validate-reviews.py <review-json>` and fix any missing IDs. Do not alter packet.json, source.md, another review, or tracked source files. Label judgments reviewerType=agent and status=provisional. Do not claim that a source citation alone proves accuracy or that output quality proves learning improvement. Return the packet ID, item counts reviewed, reference count, any serious errors, and paths to the two review files.
+```
+
+The coordinator validates that each review covers every item ID and reference concept ID, preserves independent disagreements, and reconciles disputed claims against `source.md`. Only then aggregate packet scores by case using `coordinator-map.json`. The original case `scores.json` stays pending human review; provisional agent results live alongside packets. The Java data-structures document has no approved reference concepts, so whole-case coverage must disclose that gap. Do not decide a product limit from structural counts alone.

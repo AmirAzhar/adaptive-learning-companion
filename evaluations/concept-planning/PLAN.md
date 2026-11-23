@@ -1,0 +1,62 @@
+# Concept-planning coverage experiment
+
+Status: **twelve cases attempted; provisional agent review complete, human review pending**. This is a separate experiment from the completed [model-and-size pilot](../model-size/PLAN.md). Its question is whether explicit source-derived concept planning improves coverage, especially at 100K, without degrading correctness or making generation too slow or costly. It does not change the product's 40K limit.
+
+## Hypothesis and comparison
+
+Compare two methods using **`gpt-6.1-terra` at medium reasoning effort**, the same frozen five-document sets, and the same 40K and 100K variants:
+
+| Arm | Generation method |
+| --- | --- |
+| Baseline | Existing whole-selection requests from `app/api/_server/model.js`, with no concept plan. Rerun these for a contemporaneous pair; old pilot cases are historical context. |
+| Plan | First generate a structured outline of important concepts from the source, with source block IDs and document/section positions. Then use that outline to choose distinct coverage targets for Main ideas, Quiz, and Flashcards. Each format still receives the original source blocks and must cite them; the plan is guidance, not evidence. |
+
+The planning call must use only source text. **Never include the approved reference concepts, reviewer notes, or previous outputs in a generation request.** Keep the existing 420-character source-block construction, prompt/schema constraints other than the planning intervention, five document IDs/order, 10-question and 20-card caps, and summary-part policy fixed. Do not simultaneously change chunking, formatting, model, output count, or retrieval. Record the exact prompt, schema, and code commit for both arms.
+
+The plan should list candidate concepts with concise claims, source block IDs, importance, and section/position, then assign nonduplicative targets across the three formats. Validate that cited block IDs exist, that each selected claim is supported by its block, and that no document is omitted. Treat invalid or incomplete plans as failed attempts; preserve their call, usage, cost, and validation outcome. Do not silently replace a failed plan with the baseline method.
+
+## Cases and sequence
+
+Use the shared `data/evaluation/corpus-manifest.json` and `reference-concepts.reviewed.json`. The initial matrix is `2 methods × 2 sizes × 3 source sets × 1 run = 12 cases`, producing 36 format results plus six planning outputs. Each case generates all three formats. Pair arms on the same set and size. Use a stable case ID such as `frontend-100k-terra-plan-r1`. If the first run shows a promising but uncertain effect, add one predeclared repeat of all twelve cases before making a product decision. Do not automatically expand the queue.
+
+Run order within each set/size pair should alternate which arm goes first to reduce time/order bias. Keep API calls sequential if budget or rate limits require it. No new case starts until the harness, score artifact format, and stage budget have been reviewed. The old 12 cases are not counted as new baseline runs because the comparison should use matching settings and a fresh paired repetition.
+
+## Measurements and decision rule
+
+Use the same approved reference concepts and the scoring rules in the [first pilot](../model-size/PLAN.md): concept coverage (0/0.5/1), high-priority coverage, factual correctness and source support, usefulness (0–2), duplicates, source/document/third balance, validated success, repairs/retries, user-level latency, and **total USD cost including the planning call**. Score each format separately and the union of correct concept credit across all three. Preserve raw numerators and denominators. Blind reviewers to method; source length makes size blinding partial. Agent-only scores remain provisional. Review matched baseline and plan cases with the same clarified rubric used in the first pilot.
+
+Primary comparison: at **100K**, calculate the plan-minus-baseline difference in concept coverage for each format in each source set, then report the three-set average and every set's result. A useful signal is at least **+15 percentage points in average per-format coverage**, no negative set-level average, at least 95% correct-and-supported items, and zero serious errors. This effect-size target is a screening rule, not a replacement for the previously approved absolute gates: Main ideas 70% overall/80% high priority, Quiz 35%/50%, and Flashcards 50%/60%, with mean usefulness at least 1.3. Report whether each gate passes. At 40K, check whether the plan causes a quality regression greater than five coverage points. Cost and latency must be shown next to quality; the earlier $2-per-complete-set and 180-second format gates are comparison reference points, but a new stage budget must be fixed before paid runs.
+
+If the plan raises coverage but still misses the absolute gates, test multiple targeted study sessions next. If it barely changes coverage, investigate source structure and retrieval. Do not infer learning outcomes or increase the product limit from one agent-scored repetition.
+
+## Required artifacts and ownership
+
+All private artifacts for this experiment belong under ignored `data/evaluation/experiments/concept-planning/`: `progress.json`, `controls.json`, one case directory per run, `review/`, and `comparison.md`. Track the versioned harness under `evaluations/concept-planning/` when implemented. Reuse the **artifact contract** in the [first pilot](../model-size/PLAN.md): each case needs `manifest.json`, `calls.json`, `outputs.json`, `scores.json`, and `report.md`. The plan arm also stores its generated plan and validation result in `outputs.json`; `calls.json` includes every plan, format, repair, and retry call. The manifest identifies the arm and input/prompt/schema hashes. Keep API keys and private text out of tracked documentation.
+
+The next implementation task is an **offline harness and mocked self-test** for both arms. Verify source hashes and the 12-case queue, inspect every request before paid use to confirm the reference answers are absent, then fix a stage budget. No API calls are authorized by this document alone.
+
+## Setup record, 2026-11-19
+
+`run-case.mjs` and `plan.mjs` implement the isolated arms. The plan schema asks for claims, exact source-block evidence quotes, importance, position, and format targets. Local validation checks citations, quotes, positions, distinct claims, and document/format spread; semantic support remains for blinded review. The baseline uses the product request builders unchanged apart from the fixed evaluation model, effort, and timeout. The plan arm appends source-derived targets to the same format requests, including coverage repair. Neither arm passes reference concepts or prior format outputs to generation.
+
+Offline verification passed for 22 snapshot hashes, 30 selected corpus files, the deterministic 12-case order, and mocked requests and outputs for both arms. `npm test` passed (20 tests). The first queued case is `frontend-40k-terra-baseline-r1`. No case artifacts or paid API calls have been created.
+
+At setup, the **$25 stage maximum and $2 per-case maximum were proposed** pending authorization. The [Terra model page](https://developers.openai.com/api/docs/models/gpt-6.1-terra) lists Responses API, medium reasoning effort, structured outputs, and standard rates of $1 per million input tokens, $0.05 cached input, and $5 output; requests above 272K input tokens have a price adjustment. The historical Terra pilot's spending approval did not carry over. The later approval and run outcome are recorded below.
+
+## Run record, 2026-11-19
+
+The user approved this experiment's $25 stage and $2 case caps and requested the full queue sequentially. All 12 cases were attempted in order: eight generated all three validated formats and four failed. The failed cases are the three 100K plan calls, each timing out at the fixed 90 seconds without returned usage, and systems 40K plan, whose response included a claim and quote absent from its cited block. No completed case was rerun and no second repetition was started.
+
+The frontend 40K plan call first failed a position-label check. Its original response and judgment remain recorded; a local revision derives position from the cited block, and the case resumed from that saved response without another planning API call. This validator revision is recorded in its call artifact. Exact source quotes and claims are required for all accepted plan concepts; semantic interpretation still awaits review.
+
+Thirty API attempts were recorded. Known cost is $0.585939; the three timed-out attempts have unknown actual charges and $1 conservative reservations each, so the stage ledger debits $3.585939. This is a budget bound, not actual spend. Five required artifacts exist for each case under ignored experiment data. Anonymous review packets for all eight generated cases received twelve complete provisional agent reviews, with independent overlap on the two complete 40K pairs. Original judgments remain intact; separate source-based provisional reconciliations and the paired comparison are under ignored experiment review data and `comparison.md`. The three 100K plan failures preclude a numerical 100K plan-minus-baseline coverage effect from this run. Reliability, latency, and cost differences remain reportable.
+
+## Explicit timeout retry amendment, 2026-11-20
+
+The user requested subagents to retry the three 100K planning calls that timed out. This authorizes **one recorded manual retry of each timed-out planning attempt within its existing case**, sequentially, not a second repetition or a rerun of any generated format. The original 90-second attempts and unknown actual costs remain in their case calls. Their original $1 budget reservations are preserved as `originalReservedUsd`, and the active reservations were tightened to source-request-specific conservative bounds of $0.91, $0.88, and $0.92 for frontend, Java, and systems respectively. The resulting pre-retry stage ledger is $3.295939; actual cost is still unknown. Retry only `frontend-100k-terra-plan-r1`, `java-100k-terra-plan-r1`, and `systems-100k-terra-plan-r1` when each still has exactly one timed-out planning call and no format calls. If a retry yields a valid source-derived plan, generate the same Main ideas, Quiz, and Flashcards formats under their original 90-second per-call timeout. If it fails, preserve the attempt and keep the case failed; do not automatically retry again.
+
+The planning retry timeout is **180 seconds**; this is the only request-setting change. Record it in each retry call and manifest. Keep model, medium reasoning effort, source hashes/order, plan prompt/schema, source blocks, format prompts, item caps, and review rules fixed. The longer planning timeout affects latency and first-attempt reliability comparisons and must be reported explicitly. Budget gates must count each prior request-specific reservation against its case's approved $2 cap and reserve a conservative maximum for each new call from the serialized request size and Terra's published 128K output-token maximum. Any new unknown-cost attempt gets its own reservation; actual cost remains unknown until billing is checked. Run the offline mock and `npm test` after changing JavaScript before any paid retry. The existing $25 stage maximum and $2 case cap remain unchanged.
+
+### Retry outcome
+
+Subagents ran the three retries sequentially, one per timed-out case. Frontend returned 122 plan concepts and failed the fixed 120-concept cap; its response also had invalid exact source matches. Java returned a valid plan and all three validated formats. Systems returned 155 concepts and failed the same cap. No second retry or second repetition was run. The three original 90-second timeouts remain counted as first-attempt failures, with unknown actual costs. The 180-second retries added six API calls and $0.300772 known cost. Cumulative known cost is $0.886711; the conservative stage ledger is $3.596711 including $2.71 of reservations for the original timeouts. Nine cases now have all three formats and provisional agent review; three cases remain failed. The complete three-set 100K coverage effect is still undefined because frontend and systems have no planning-arm formats. The single successful Java 100K pair has independent blinded provisional reviews and separate source-based reconciliation; it does not establish an overall winner.

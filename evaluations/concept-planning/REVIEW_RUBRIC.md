@@ -1,0 +1,13 @@
+# Provisional agent review rubric
+
+Read `packet.json` and all five `sources/D*.md` files. Score only this anonymous packet. Source length can reveal the size condition; the generation arm remains hidden.
+
+For each format, score every listed reference concept 0 (absent or incorrect), 0.5 (partly covered, correct and understandable), or 1 (substantially covered, correct and understandable). A full score requires the defining relationship or mechanism; a bare topic label scores 0. Repetition counts once. Record the generated item IDs supporting nonzero credit. Score the distinct-concept union across Main ideas, Quiz, and Flashcards as the maximum correct credit for each concept, with raw numerator and denominator; also report the high-priority union.
+
+Review every generated item, including Main ideas overview `M00`. Classify correctness as `correct_supported`, `minor_issue`, or `serious_error`. A wrong quiz key, unsupported answer, misleading universal claim, or unsupported guarantee is serious. If the source note appears factually wrong, cite both the source and the independent concern; a source citation alone does not prove correctness. A harmless internal source-ID residue can lower usefulness without making an otherwise supported item wrong.
+
+Score usefulness 0 (unusable, rote, or ambiguous), 1 (usable but shallow or unfocused), or 2 (clear, distinct, and probes understanding through explanation, comparison, or application). Length alone does not earn 2. Incorrect items receive 0. Flag duplicate and near-duplicate item IDs, wrong keys, serious errors, and missing high-priority concepts. Cite source file and location for errors and borderline judgments.
+
+For each format, report concept credit / reference concept count, high-priority credit / high-priority count, coverage by document and source third with numerators and denominators, supported items / reviewed items, minor/serious/key error counts, usefulness sum / reviewed items, usefulness-2 count, and duplicates. Source third comes from the approved reference concept's location in `packet.json`, not from the generated item's citation. Use `null` and a reason for anything unjudged.
+
+Apply the approved gates: Main ideas coverage at least 0.70 and high-priority coverage at least 0.80; Quiz 0.35 and 0.50; Flashcards 0.50 and 0.60. Each format also needs at least 0.95 correct and supported items, zero serious errors, and mean usefulness at least 1.3. Reliability, latency, and cost are excluded from blinded scoring. Never infer learning outcomes. Set `reviewerType` to `agent` and `status` to `provisional`. Save each independent JSON review and rationale under separate filenames; never overwrite original judgments.
